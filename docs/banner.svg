@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">VicoDeck</title>
+  <desc id="desc">Desktop companion for the Vico programmable keyboard</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#090b0f"/>
+      <stop offset="1" stop-color="#151a20"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#d6ff38" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#d6ff38" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000" flood-opacity=".55"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="360" rx="24" fill="url(#bg)"/>
+  <circle cx="875" cy="168" r="260" fill="url(#glow)"/>
+  <g opacity=".18" stroke="#78818d">
+    <path d="M0 70h1200M0 140h1200M0 210h1200M0 280h1200"/>
+    <path d="M80 0v360M180 0v360M280 0v360M380 0v360M480 0v360M580 0v360M680 0v360M780 0v360M880 0v360M980 0v360M1080 0v360"/>
+  </g>
+  <g transform="translate(84 85)">
+    <rect x="0" y="0" width="78" height="78" rx="12" transform="rotate(45 39 39)" fill="#151a20" stroke="#59626d"/>
+    <text x="39" y="52" text-anchor="middle" font-family="Segoe UI,Arial" font-weight="800" font-size="36" fill="#d6ff38">V</text>
+  </g>
+  <text x="205" y="155" font-family="Segoe UI,Arial" font-weight="800" font-size="64" letter-spacing="5" fill="#f0f3f7">VICODECK</text>
+  <text x="208" y="198" font-family="Segoe UI,Arial" font-size="18" letter-spacing="4" fill="#8b949f">CREATE YOUR FLOW</text>
+  <text x="208" y="245" font-family="Segoe UI,Arial" font-size="18" fill="#a1a9b3">Programmable keys · OLED Studio · Claude Code Relay</text>
+  <g transform="translate(780 72) rotate(-7 170 110)" filter="url(#shadow)">
+    <rect x="0" y="0" width="340" height="220" rx="20" fill="#20262e" stroke="#58616c"/>
+    <rect x="24" y="24" width="104" height="56" rx="5" fill="#020503" stroke="#303840"/>
+    <text x="37" y="50" font-family="Consolas,monospace" font-weight="700" font-size="14" letter-spacing="3" fill="#d6ff38">VICO</text>
+    <text x="37" y="68" font-family="Consolas,monospace" font-size="7" fill="#d6ff38">CLAUDE: TOOL</text>
+    <g fill="#343c46" stroke="#69727e">
+      <rect x="155" y="24" width="66" height="66" rx="9"/><rect x="236" y="24" width="66" height="66" rx="9"/>
+      <rect x="24" y="105" width="66" height="66" rx="9"/><rect x="105" y="105" width="66" height="66" rx="9"/>
+      <rect x="186" y="105" width="66" height="66" rx="9"/><rect x="267" y="105" width="48" height="66" rx="9"/>
+    </g>
+    <g fill="#d6ff38">
+      <rect x="177" y="78" width="22" height="2"/><rect x="258" y="78" width="22" height="2"/>
+      <rect x="46" y="159" width="22" height="2"/><rect x="127" y="159" width="22" height="2"/>
+      <rect x="208" y="159" width="22" height="2"/><rect x="280" y="159" width="22" height="2"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,17 @@
+Bluetooth and USB icon artwork
+================================
+
+Source: Font Awesome Free 7.3.0
+https://fontawesome.com/
+
+Icons are licensed under Creative Commons Attribution 4.0 International
+(CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
+
+Copyright 2026 Fonticons, Inc.
+
+The bluetooth.svg viewBox was widened so the artwork is not clipped. Both SVG
+files use an explicit black fill for compatibility with PCB/EDA import tools.
+
+Brand icons may be trademarks of their respective owners. Use these marks only
+to identify the corresponding Bluetooth or USB function, and check applicable
+brand-usage/certification requirements before commercial production.
