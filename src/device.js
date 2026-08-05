@@ -282,11 +282,11 @@ export class VicoDevice {
   async sendOled(oled) {
     const frame = renderOledTemplate(oled);
     await this.send(COMMAND.OLED_META, [
-      1, // protocol version
+      1, // 协议版本
       128,
       64,
       Math.max(0, Math.min(100, oled.brightness || 100)),
-      1, // format: row-major, 1-bit, MSB first
+      1, // 格式：行优先、1 位、最高有效位优先
       OLED_BITMAP_BYTES & 0xff,
       OLED_BITMAP_BYTES >> 8
     ]);
@@ -331,7 +331,7 @@ export class VicoDevice {
     return { activeProfile:ack.activeProfile, profileCrcs:this.connectedStatus.profileCrcs };
   }
 
-  /** Switch slots without rewriting any of the profile bindings. */
+  /** 切换预设槽位，但不重写任何按键绑定。 */
   async activateProfile(slot) {
     if ((this.connectedStatus?.protocolVersion || 0) < 2) {
       throw new Error("键盘固件版本过旧，不支持预设切换");

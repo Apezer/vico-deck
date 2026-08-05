@@ -10,8 +10,8 @@ import {
 const frame = renderOledTemplate({ mode: "minimal" });
 assert.equal(frame.length, 1024);
 
-// Generated from the firmware's Adafruit GFX classic font and exact layout:
-// renderKeyStatus() + drawKeyBox(), all keys released, USB mode.
+// 根据固件的 Adafruit GFX 经典字体和精确布局生成：
+// renderKeyStatus() + drawKeyBox()，所有按键释放，USB 模式。
 const digest = createHash("sha256").update(frame).digest("hex");
 assert.equal(
   digest,

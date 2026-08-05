@@ -33,7 +33,7 @@ function xorChecksum(bytes) {
   return checksum;
 }
 
-/** Build one fixed-size Vendor HID report (the report ID is sent separately). */
+/** 构建一个固定长度的 Vendor HID 报告（报告 ID 单独发送）。 */
 export function buildHidReport(command, payload = []) {
   if (payload.length > VICO_HID_MAX_PAYLOAD) {
     throw new Error(`HID payload exceeds ${VICO_HID_MAX_PAYLOAD} bytes`);
@@ -47,7 +47,7 @@ export function buildHidReport(command, payload = []) {
   return report;
 }
 
-/** Validate and split a fixed-size report without exposing mutable backing data. */
+/** 校验并拆分固定长度报告，同时不暴露可变的底层数据。 */
 export function parseHidReport(value) {
   const bytes = value instanceof Uint8Array
     ? value
@@ -63,7 +63,7 @@ export function parseHidReport(value) {
   };
 }
 
-/** Standard CRC32 used to reject incomplete or mixed OLED frames. */
+/** 使用标准 CRC32 拒绝不完整或混合的 OLED 帧。 */
 export function calculateCrc32(bytes) {
   let crc = 0xffffffff;
   for (const value of bytes) {
@@ -76,8 +76,8 @@ export function calculateCrc32(bytes) {
 }
 
 /**
- * Reassembles frame reports. A frame is published only after every byte and
- * both CRC values have been verified, so React never renders a partial frame.
+ * 重新组装帧报告。只有在所有字节和两个 CRC 值均校验通过后才发布帧，
+ * 因此 React 不会渲染不完整的画面。
  */
 export class OledTwinReceiver {
   constructor() {

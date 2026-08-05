@@ -48,8 +48,8 @@ function readConfig() {
       return { ...structuredClone(defaults), ...saved };
     }
 
-    // Preserve the previous active layout in P5 while installing the new
-    // fixed five-slot model. P1 always remains the required navigation preset.
+    // 安装新的五槽位固定模型时，将之前的活动布局保存在 P5。
+    // P1 始终保留为必需的导航预设。
     const migrated = structuredClone(defaults);
     const legacy = saved.profiles?.find((profile) => profile.id === saved.activeProfile) || saved.profiles?.[0];
     if (legacy?.mappings?.length === 8) {
@@ -192,7 +192,7 @@ app.whenReady().then(() => {
     }
   });
 
-  // WebHID access is deliberately limited to devices explicitly selected by the user.
+  // WebHID 访问仅限用户明确选择的设备。
   const deviceSession = mainWindow.webContents.session;
   deviceSession.setPermissionCheckHandler((_wc, permission) =>
     permission === "hid" || permission === "bluetooth" || permission === "bluetoothScanning"

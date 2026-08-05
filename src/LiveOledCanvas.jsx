@@ -8,8 +8,8 @@ import {
 import { OLED_PIXEL_SCALE, drawPixelFrame } from "./oled-canvas-renderer.js";
 
 /**
- * Pixel-accurate device mirror. Live frames are decoded from the physical
- * SSD1306 byte layout; the fallback frame is clearly marked as simulated.
+ * 像素级精确的设备镜像。实时帧按照物理 SSD1306 字节布局解码；
+ * 后备画面会明确标记为模拟画面。
  */
 export default function LiveOledCanvas({ frame, connected }) {
   const canvasRef = useRef(null);

@@ -19,7 +19,7 @@ export function bitmapFromBase64(value) {
       bytes[index] = binary.charCodeAt(index);
     }
   } catch {
-    // Invalid saved data is treated as a blank canvas.
+    // 无效的已保存数据按空白画布处理。
   }
   return bytes;
 }
@@ -46,7 +46,7 @@ export function setBitmapPixel(bytes, x, y, enabled) {
   else bytes[byteIndex] &= ~mask;
 }
 
-/** Convert Adafruit SSD1306 page-major bytes into the editor's row-major bitmap. */
+/** 将 Adafruit SSD1306 页优先字节转换为编辑器使用的行优先位图。 */
 export function ssd1306PageBufferToBitmap(pageBuffer) {
   const bitmap = createBlankBitmap();
   if (!pageBuffer || pageBuffer.length !== OLED_BITMAP_BYTES) return bitmap;

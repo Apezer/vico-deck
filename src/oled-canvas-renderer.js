@@ -2,7 +2,7 @@ import { OLED_HEIGHT, OLED_WIDTH, getBitmapPixel } from "./oled-bitmap.js";
 
 export const OLED_PIXEL_SCALE = 4;
 
-/** Draw one 128 x 64 row-major bitmap without browser font rendering. */
+/** 绘制一张 128×64 的行优先位图，不使用浏览器字体渲染。 */
 export function drawPixelFrame(canvas, bytes, brightness = 100) {
   if (!canvas || !bytes) return;
   const context = canvas.getContext("2d");

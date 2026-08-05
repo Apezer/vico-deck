@@ -405,10 +405,9 @@ export default function App() {
     if (lastDeviceProfile.current === status.activeProfile) return;
     lastDeviceProfile.current = status.activeProfile;
 
-    // Keep every page in step with profile changes initiated from the keyboard
-    // (settings menu or Fn + KEY1..KEY5). This also aligns the app immediately
-    // after reconnecting. The ref prevents local editing selections from being
-    // overwritten while the device's active profile has not actually changed.
+    // 让所有页面跟随键盘端发起的预设切换（设置菜单或 Fn + KEY1～KEY5）。
+    // 重新连接后也会立即对齐；当设备活动预设没有真正变化时，
+    // 该引用可防止软件中的本地编辑选择被覆盖。
     setConfig((current) => {
       if (!current) return current;
       const target = current.profiles.find((item) => item.slot === status.activeProfile);
@@ -426,9 +425,8 @@ export default function App() {
     const target = config.profiles.find((item) => item.id === profileId);
     if (!target) return;
 
-    // Select immediately so editing feels local and responsive. When the USB
-    // configuration channel is connected, activate the same slot on-device;
-    // this command does not overwrite the profile's key bindings.
+    // 立即选择以保证编辑操作流畅；USB 配置通道连接时，
+    // 同时激活设备上的相同槽位。该命令不会覆盖预设的按键绑定。
     setConfig((current) => current
       ? { ...current, activeProfile: target.id }
       : current);
@@ -437,8 +435,7 @@ export default function App() {
     try {
       await deviceRef.current.activateProfile(target.slot);
     } catch (error) {
-      // Restore the device-confirmed slot when activation fails so the two
-      // sides never silently show different active profiles.
+      // 激活失败时恢复设备确认的槽位，避免两端静默显示不同的活动预设。
       const actualSlot = deviceRef.current?.connectedStatus?.activeProfile;
       setConfig((current) => {
         if (!current || !Number.isInteger(actualSlot)) return current;
