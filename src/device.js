@@ -6,6 +6,13 @@ import {
   buildHidReport,
   parseHidReport
 } from "./twin-protocol.js";
+import {
+  PROFILE_COMMAND,
+  PROFILE_PROTOCOL_VERSION,
+  compileProfile,
+  compiledProfileCrc,
+  uint32ToBytes
+} from "./profile-protocol.js";
 
 const VICO_USB_VENDOR_ID = 0x3343;
 const VICO_USB_PRODUCT_ID = 0x83cf;
@@ -13,7 +20,6 @@ const VICO_VENDOR_USAGE_PAGE = 0xff00;
 const VICO_VENDOR_USAGE = 0x01;
 const COMMAND = {
   ...TWIN_COMMAND,
-  SET_KEY: 0x10,
   OLED_META: 0x20,
   OLED_BITMAP: 0x21,
   COMMIT: 0x30
@@ -30,9 +36,11 @@ function isVicoUsbDevice(device) {
     );
 }
 
-function encodeJson(value) {
-  return Array.from(new TextEncoder().encode(JSON.stringify(value)));
-}
+const PROFILE_ERRORS = [
+  "成功", "预设编号无效", "按键编号无效", "按键配置无效",
+  "没有进行中的同步", "预设数据不完整", "预设校验失败",
+  "键盘存储失败", "键盘正忙"
+];
 
 export class VicoDevice {
   constructor(onStatus, onFrame = () => {}) {
@@ -43,6 +51,8 @@ export class VicoDevice {
     this.helloResolver = null;
     this.helloRejecter = null;
     this.helloTimer = null;
+    this.pendingCommand = null;
+    this.connectedStatus = null;
     this.handleDisconnect = this.handleDisconnect.bind(this);
     this.handleInputReport = this.handleInputReport.bind(this);
     navigator.hid?.addEventListener("disconnect", this.handleDisconnect);
@@ -97,13 +107,28 @@ export class VicoDevice {
         vendorId: device.vendorId,
         productId: device.productId,
         firmwareVersion: info.firmwareVersion,
-        protocolVersion: info.protocolVersion
+        protocolVersion: info.protocolVersion,
+        profileCount: info.profileCount,
+        activeProfile: info.activeProfile,
+        profileCrcs: info.profileCrcs
       });
+      this.connectedStatus = {
+        state: "connected",
+        name: device.productName || "Vico Keyboard",
+        vendorId: device.vendorId,
+        productId: device.productId,
+        firmwareVersion: info.firmwareVersion,
+        protocolVersion: info.protocolVersion,
+        profileCount: info.profileCount,
+        activeProfile: info.activeProfile,
+        profileCrcs: info.profileCrcs
+      };
     } catch (error) {
       device.removeEventListener("inputreport", this.handleInputReport);
       if (device.opened) await device.close().catch(() => {});
       this.device = null;
       this.clearHandshake();
+      this.clearPendingCommand(new Error("设备连接已关闭"));
       this.onStatus({ state: "disconnected" });
       throw error;
     }
@@ -130,6 +155,18 @@ export class VicoDevice {
     this.helloRejecter = null;
   }
 
+  clearPendingCommand(error) {
+    if (!this.pendingCommand) return;
+    clearTimeout(this.pendingCommand.timer);
+    if (error) this.pendingCommand.reject(error);
+    this.pendingCommand = null;
+  }
+
+  publishProfileStatus(patch) {
+    this.connectedStatus = { ...this.connectedStatus, ...patch };
+    this.onStatus(this.connectedStatus);
+  }
+
   handleInputReport(event) {
     if (event.device !== this.device || event.reportId !== VICO_HID_REPORT_ID) return;
     const parsed = parseHidReport(event.data);
@@ -144,11 +181,42 @@ export class VicoDevice {
           width: payload[1],
           height: payload[2],
           format: payload[3],
-          firmwareVersion: `${payload[4]}.${payload[5]}.${payload[6]}`
+          firmwareVersion: `${payload[4]}.${payload[5]}.${payload[6]}`,
+          profileCount: payload.length >= 12 ? payload[11] : 0,
+          activeProfile: payload.length >= 13 ? payload[12] : 0,
+          profileCrcs: Array.from({ length: payload.length >= 13 ? payload[11] : 0 }, (_, index) => {
+            const offset = 13 + index * 4;
+            if (offset + 4 > payload.length) return 0;
+            return (
+              payload[offset] |
+              (payload[offset + 1] << 8) |
+              (payload[offset + 2] << 16) |
+              (payload[offset + 3] << 24)
+            ) >>> 0;
+          })
         });
       } else {
         this.helloRejecter?.(new Error("设备身份握手无效，连接已取消"));
       }
+      return;
+    }
+
+    if (parsed.command === PROFILE_COMMAND.ACK && parsed.payload.length >= 4) {
+      const [acknowledgedCommand, result, slot, activeProfile] = parsed.payload;
+      if (this.pendingCommand?.command === acknowledgedCommand) {
+        const pending = this.pendingCommand;
+        clearTimeout(pending.timer);
+        this.pendingCommand = null;
+        if (result === 0) pending.resolve({ slot, activeProfile });
+        else pending.reject(new Error(PROFILE_ERRORS[result] || `键盘返回错误 ${result}`));
+      }
+      return;
+    }
+
+    if (parsed.command === PROFILE_COMMAND.ACTIVE_CHANGED && parsed.payload.length >= 1) {
+      const activeProfile = parsed.payload[0];
+      const profileCount = this.connectedStatus?.profileCount || 0;
+      if (activeProfile < profileCount) this.publishProfileStatus({ activeProfile });
       return;
     }
 
@@ -162,6 +230,8 @@ export class VicoDevice {
       this.device = null;
       this.twinReceiver.reset();
       this.clearHandshake();
+      this.clearPendingCommand(new Error("键盘已断开"));
+      this.connectedStatus = null;
       this.onStatus({ state: "disconnected" });
     }
   }
@@ -171,6 +241,7 @@ export class VicoDevice {
     this.device = null;
     this.twinReceiver.reset();
     this.clearHandshake();
+    this.clearPendingCommand(new Error("键盘已断开"));
     if (device?.opened) {
       await device.sendReport(
         VICO_HID_REPORT_ID,
@@ -180,11 +251,32 @@ export class VicoDevice {
     device?.removeEventListener("inputreport", this.handleInputReport);
     if (device?.opened) await device.close();
     this.onStatus({ state: "disconnected" });
+    this.connectedStatus = null;
   }
 
   async send(command, payload) {
     if (!this.device?.opened) throw new Error("请先连接键盘");
     await this.device.sendReport(VICO_HID_REPORT_ID, buildHidReport(command, payload));
+  }
+
+  async requestCommand(command, payload, timeoutMs = 1800) {
+    if (this.pendingCommand) throw new Error("上一条键盘命令尚未完成");
+
+    const response = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (this.pendingCommand?.command === command) this.pendingCommand = null;
+        reject(new Error(`键盘未确认命令 0x${command.toString(16)}`));
+      }, timeoutMs);
+      this.pendingCommand = { command, resolve, reject, timer };
+    });
+
+    try {
+      await this.send(command, payload);
+    } catch (error) {
+      this.clearPendingCommand();
+      throw error;
+    }
+    return response;
   }
 
   async sendOled(oled) {
@@ -208,12 +300,54 @@ export class VicoDevice {
     }
   }
 
-  async sync(profile) {
-    for (const mapping of profile.mappings) {
-      await this.send(COMMAND.SET_KEY, [mapping.key, ...encodeJson(mapping)]);
+  async syncProfile(profile, activate = true) {
+    if ((this.connectedStatus?.protocolVersion || 0) < 2) {
+      throw new Error("键盘固件版本过旧，不支持五预设同步");
     }
-    await this.sendOled(profile.oled);
-    await this.send(COMMAND.COMMIT, []);
+    const slot = Number(profile.slot);
+    if (!Number.isInteger(slot) || slot < 0 || slot >= 5) throw new Error("预设槽位无效");
+
+    const compiled = compileProfile(profile);
+    const crc = compiledProfileCrc(compiled);
+    await this.requestCommand(PROFILE_COMMAND.BEGIN, [PROFILE_PROTOCOL_VERSION, slot]);
+    for (const item of compiled) {
+      await this.requestCommand(PROFILE_COMMAND.SET_KEY, [slot, item.key - 1, ...item.bytes]);
+    }
+    const ack = await this.requestCommand(PROFILE_COMMAND.COMMIT, [slot, activate ? 1 : 0, ...uint32ToBytes(crc)], 3500);
+
+    const profileCrcs = [...(this.connectedStatus.profileCrcs || Array(5).fill(0))];
+    profileCrcs[slot] = crc;
+    this.publishProfileStatus({ profileCrcs, activeProfile:ack.activeProfile });
+    return { slot, crc, activeProfile:ack.activeProfile, profileCrcs };
+  }
+
+  async syncAll(profiles, activeProfileId) {
+    for (const profile of [...profiles].sort((a, b) => a.slot - b.slot)) {
+      await this.syncProfile(profile, false);
+    }
+    const active = profiles.find((profile) => profile.id === activeProfileId) || profiles[0];
+    const ack = await this.requestCommand(PROFILE_COMMAND.SET_ACTIVE, [active.slot]);
+    this.publishProfileStatus({ activeProfile:ack.activeProfile });
+    return { activeProfile:ack.activeProfile, profileCrcs:this.connectedStatus.profileCrcs };
+  }
+
+  /** Switch slots without rewriting any of the profile bindings. */
+  async activateProfile(slot) {
+    if ((this.connectedStatus?.protocolVersion || 0) < 2) {
+      throw new Error("键盘固件版本过旧，不支持预设切换");
+    }
+    const profileCount = this.connectedStatus?.profileCount || 5;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= profileCount) {
+      throw new Error("预设槽位无效");
+    }
+
+    const ack = await this.requestCommand(PROFILE_COMMAND.SET_ACTIVE, [slot]);
+    this.publishProfileStatus({ activeProfile:ack.activeProfile });
+    return ack.activeProfile;
+  }
+
+  async sync(profile) {
+    return this.syncProfile(profile, true);
   }
 }
 

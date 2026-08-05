@@ -1,0 +1,82 @@
+[
+  {
+    "id": "preset-1",
+    "slot": 0,
+    "name": "导航模式",
+    "mappings": [
+      { "key": 1, "type": "keyboard", "value": "ARROW_LEFT", "label": "左方向键" },
+      { "key": 2, "type": "keyboard", "value": "ARROW_DOWN", "label": "下方向键" },
+      { "key": 3, "type": "keyboard", "value": "ARROW_RIGHT", "label": "右方向键" },
+      { "key": 4, "type": "keyboard", "value": "ENTER", "label": "Enter" },
+      { "key": 5, "type": "keyboard", "value": "BACKSPACE", "label": "Backspace" },
+      { "key": 6, "type": "keyboard", "value": "ARROW_UP", "label": "上方向键" },
+      { "key": 7, "type": "shortcut", "value": "Ctrl+Win", "label": "Ctrl + Win" },
+      { "key": 8, "type": "layer", "value": "FN", "label": "Fn" }
+    ],
+    "oled": { "mode": "dashboard", "title": "VICO", "subtitle": "CREATE YOUR FLOW", "brightness": 78, "sleepMinutes": 5, "showBattery": true, "showConnection": true }
+  },
+  {
+    "id": "preset-2",
+    "slot": 1,
+    "name": "办公模式",
+    "mappings": [
+      { "key": 1, "type": "shortcut", "value": "Ctrl+C", "label": "复制" },
+      { "key": 2, "type": "shortcut", "value": "Ctrl+V", "label": "粘贴" },
+      { "key": 3, "type": "shortcut", "value": "Ctrl+Z", "label": "撤销" },
+      { "key": 4, "type": "shortcut", "value": "Ctrl+Shift+Z", "label": "重做" },
+      { "key": 5, "type": "shortcut", "value": "Ctrl+S", "label": "保存" },
+      { "key": 6, "type": "shortcut", "value": "Ctrl+F", "label": "查找" },
+      { "key": 7, "type": "shortcut", "value": "Ctrl+A", "label": "全选" },
+      { "key": 8, "type": "layer", "value": "FN", "label": "Fn" }
+    ],
+    "oled": { "mode": "dashboard", "title": "VICO", "subtitle": "OFFICE", "brightness": 78, "sleepMinutes": 5, "showBattery": true, "showConnection": true }
+  },
+  {
+    "id": "preset-3",
+    "slot": 2,
+    "name": "媒体模式",
+    "mappings": [
+      { "key": 1, "type": "media", "value": "PREVIOUS_TRACK", "label": "上一曲" },
+      { "key": 2, "type": "media", "value": "PLAY_PAUSE", "label": "播放 / 暂停" },
+      { "key": 3, "type": "media", "value": "NEXT_TRACK", "label": "下一曲" },
+      { "key": 4, "type": "media", "value": "MUTE", "label": "静音" },
+      { "key": 5, "type": "media", "value": "VOLUME_DOWN", "label": "音量 -" },
+      { "key": 6, "type": "media", "value": "VOLUME_UP", "label": "音量 +" },
+      { "key": 7, "type": "media", "value": "STOP", "label": "停止" },
+      { "key": 8, "type": "layer", "value": "FN", "label": "Fn" }
+    ],
+    "oled": { "mode": "dashboard", "title": "VICO", "subtitle": "MEDIA", "brightness": 78, "sleepMinutes": 5, "showBattery": true, "showConnection": true }
+  },
+  {
+    "id": "preset-4",
+    "slot": 3,
+    "name": "开发模式",
+    "mappings": [
+      { "key": 1, "type": "keyboard", "value": "ESC", "label": "Esc" },
+      { "key": 2, "type": "keyboard", "value": "TAB", "label": "Tab" },
+      { "key": 3, "type": "shortcut", "value": "Ctrl+C", "label": "Ctrl+C" },
+      { "key": 4, "type": "shortcut", "value": "Ctrl+V", "label": "Ctrl+V" },
+      { "key": 5, "type": "shortcut", "value": "Ctrl+Z", "label": "Ctrl+Z" },
+      { "key": 6, "type": "shortcut", "value": "Ctrl+Shift+P", "label": "命令面板" },
+      { "key": 7, "type": "shortcut", "value": "Ctrl+`", "label": "终端" },
+      { "key": 8, "type": "layer", "value": "FN", "label": "Fn" }
+    ],
+    "oled": { "mode": "dashboard", "title": "VICO", "subtitle": "DEVELOP", "brightness": 78, "sleepMinutes": 5, "showBattery": true, "showConnection": true }
+  },
+  {
+    "id": "preset-5",
+    "slot": 4,
+    "name": "系统模式",
+    "mappings": [
+      { "key": 1, "type": "shortcut", "value": "Win+D", "label": "显示桌面" },
+      { "key": 2, "type": "shortcut", "value": "Win+E", "label": "资源管理器" },
+      { "key": 3, "type": "shortcut", "value": "Win+L", "label": "锁定屏幕" },
+      { "key": 4, "type": "shortcut", "value": "Win+Shift+S", "label": "截图" },
+      { "key": 5, "type": "shortcut", "value": "Alt+Tab", "label": "切换窗口" },
+      { "key": 6, "type": "shortcut", "value": "Ctrl+Shift+Esc", "label": "任务管理器" },
+      { "key": 7, "type": "keyboard", "value": "DELETE", "label": "Delete" },
+      { "key": 8, "type": "layer", "value": "FN", "label": "Fn" }
+    ],
+    "oled": { "mode": "dashboard", "title": "VICO", "subtitle": "SYSTEM", "brightness": 78, "sleepMinutes": 5, "showBattery": true, "showConnection": true }
+  }
+]

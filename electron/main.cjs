@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell } = require("electron");
 const fs = require("fs");
 const path = require("path");
+const defaultProfiles = require("../shared/default-profiles.json");
 const {
   getHooksState,
   installHooks,
@@ -26,35 +27,14 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
 
 const defaults = {
+  schemaVersion: 2,
   startAtLogin: false,
   minimizeToTray: true,
   closeToTray: true,
   launchMinimized: false,
   theme: "dark",
-  activeProfile: "default",
-  profiles: [{
-    id: "default",
-    name: "默认配置",
-    mappings: [
-      { key: 1, type: "keyboard", value: "ARROW_LEFT", label: "左方向键" },
-      { key: 2, type: "keyboard", value: "ARROW_DOWN", label: "下方向键" },
-      { key: 3, type: "keyboard", value: "ARROW_RIGHT", label: "右方向键" },
-      { key: 4, type: "keyboard", value: "ENTER", label: "Enter" },
-      { key: 5, type: "keyboard", value: "BACKSPACE", label: "Backspace" },
-      { key: 6, type: "keyboard", value: "ARROW_UP", label: "上方向键" },
-      { key: 7, type: "shortcut", value: "Ctrl+Win", label: "Ctrl + Win" },
-      { key: 8, type: "layer", value: "FN", label: "Fn" }
-    ],
-    oled: {
-      mode: "dashboard",
-      title: "VICO",
-      subtitle: "CREATE YOUR FLOW",
-      brightness: 78,
-      sleepMinutes: 5,
-      showBattery: true,
-      showConnection: true
-    }
-  }]
+  activeProfile: "preset-1",
+  profiles: structuredClone(defaultProfiles)
 };
 
 function configPath() {
@@ -63,7 +43,31 @@ function configPath() {
 
 function readConfig() {
   try {
-    return { ...defaults, ...JSON.parse(fs.readFileSync(configPath(), "utf8")) };
+    const saved = JSON.parse(fs.readFileSync(configPath(), "utf8"));
+    if (saved.schemaVersion === 2 && saved.profiles?.length === 5) {
+      return { ...structuredClone(defaults), ...saved };
+    }
+
+    // Preserve the previous active layout in P5 while installing the new
+    // fixed five-slot model. P1 always remains the required navigation preset.
+    const migrated = structuredClone(defaults);
+    const legacy = saved.profiles?.find((profile) => profile.id === saved.activeProfile) || saved.profiles?.[0];
+    if (legacy?.mappings?.length === 8) {
+      migrated.profiles[4] = {
+        ...migrated.profiles[4],
+        name: "旧配置",
+        mappings: structuredClone(legacy.mappings),
+        oled: { ...migrated.profiles[4].oled, ...legacy.oled }
+      };
+    }
+    return {
+      ...migrated,
+      startAtLogin: saved.startAtLogin ?? migrated.startAtLogin,
+      minimizeToTray: saved.minimizeToTray ?? migrated.minimizeToTray,
+      closeToTray: saved.closeToTray ?? migrated.closeToTray,
+      launchMinimized: saved.launchMinimized ?? migrated.launchMinimized,
+      theme: saved.theme ?? migrated.theme
+    };
   } catch {
     return structuredClone(defaults);
   }

@@ -11,6 +11,7 @@
     "test": "node test/claude-monitor.test.cjs",
     "test:oled": "node test/oled-bitmap.test.mjs",
     "test:twin": "node test/twin-protocol.test.mjs",
+    "test:profiles": "node test/profile-protocol.test.mjs",
     "preview": "vite preview",
     "start": "electron .",
     "dist": "npm run build && electron-builder --win nsis"
@@ -36,6 +37,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "shared/**/*",
       "asserts/**/*",
       "package.json"
     ],

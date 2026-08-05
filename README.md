@@ -21,6 +21,8 @@
   [GATT 协议](docs/GATT_PROTOCOL.md)
   ·
   [OLED 位图协议](docs/OLED_BITMAP_PROTOCOL.md)
+  ·
+  [五预设协议](docs/KEY_PROFILE_PROTOCOL.md)
 </div>
 
 ---
@@ -29,7 +31,7 @@
 
 VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLED、配置文件和开发者工作流集中在一个界面中，并可在关闭窗口后继续驻留系统托盘。
 
-按键配置页支持 OLED 数字孪生：连接支持协议 v1 的固件后，软件会显示由键盘回传并通过 CRC32 校验的真实 128 × 64 帧，而不是重新绘制一张近似界面。协议细节见 [OLED_TWIN_PROTOCOL.md](docs/OLED_TWIN_PROTOCOL.md)。
+按键配置页支持 OLED 数字孪生：连接支持协议 v2 的固件后，软件会显示由键盘回传并通过 CRC32 校验的真实 128 × 64 帧，而不是重新绘制一张近似界面。协议细节见 [OLED_TWIN_PROTOCOL.md](docs/OLED_TWIN_PROTOCOL.md)。
 
 与普通键盘配置器不同，VicoDeck 还能监听 **Claude Code** 的工作状态，并通过蓝牙把“正在思考”“正在调用工具”“任务完成”等事件实时发送到 ESP32-S3，最终显示在键盘的 128×64 OLED 上。
 
@@ -39,9 +41,11 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 
 - 2×4、共 8 个可编程按键
 - 快捷键、媒体键和系统操作
-- 多配置文件管理
+- 五套固定预设，可分别编辑并同步到键盘 NVS
+- Fn + KEY1～KEY5 可在不运行软件时切换 P1～P5
+- 通过设备 CRC 自动判断每套预设是否已经同步
 - 配置自动保存
-- 预留 USB WebHID 配置协议
+- USB WebHID 逐命令确认和原子提交
 
 ### OLED Studio
 
@@ -193,7 +197,8 @@ vico-deck/
 │  └─ claude-monitor.test.cjs
 ├─ docs/
 │  ├─ GATT_PROTOCOL.md
-│  └─ OLED_BITMAP_PROTOCOL.md
+│  ├─ OLED_BITMAP_PROTOCOL.md
+│  └─ KEY_PROFILE_PROTOCOL.md
 └─ package.json
 ```
 
@@ -201,11 +206,11 @@ vico-deck/
 
 - [x] 8 键配置界面
 - [x] OLED Studio
-- [x] 多配置文件
+- [x] 五套可编辑预设
 - [x] 托盘与开机自启动
 - [x] Claude Code hooks 状态监听
 - [x] BLE GATT OLED 状态转发
-- [ ] 将按键配置写入 ESP32 NVS
+- [x] 将按键配置写入 ESP32 NVS
 - [x] OLED 位图编辑与分片传输协议
 - [ ] 固件端接收、校验并持久化 OLED 位图
 - [ ] RGB 灯效配置

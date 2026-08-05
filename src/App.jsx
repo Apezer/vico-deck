@@ -16,24 +16,14 @@ import {
   importImageBitmap,
   invertBitmap
 } from "./oled-bitmap";
+import { profileCrc } from "./profile-protocol";
+import defaultProfiles from "../shared/default-profiles.json";
 
 const fallbackConfig = {
+  schemaVersion: 2,
   startAtLogin: false, minimizeToTray: true, closeToTray: true,
-  activeProfile: "default",
-  profiles: [{
-    id: "default", name: "默认配置",
-    mappings: [
-      { key: 1, type: "keyboard", value: "ARROW_LEFT", label: "左方向键" },
-      { key: 2, type: "keyboard", value: "ARROW_DOWN", label: "下方向键" },
-      { key: 3, type: "keyboard", value: "ARROW_RIGHT", label: "右方向键" },
-      { key: 4, type: "keyboard", value: "ENTER", label: "Enter" },
-      { key: 5, type: "keyboard", value: "BACKSPACE", label: "Backspace" },
-      { key: 6, type: "keyboard", value: "ARROW_UP", label: "上方向键" },
-      { key: 7, type: "shortcut", value: "Ctrl+Win", label: "Ctrl + Win" },
-      { key: 8, type: "layer", value: "FN", label: "Fn" }
-    ],
-    oled: { mode: "dashboard", title: "VICO", subtitle: "CREATE YOUR FLOW", brightness: 78, sleepMinutes: 5, showBattery: true, showConnection: true }
-  }]
+  activeProfile: "preset-1",
+  profiles: structuredClone(defaultProfiles)
 };
 
 const actionGroups = [
@@ -41,6 +31,8 @@ const actionGroups = [
     ["keyboard", "ARROW_LEFT", "左方向键"], ["keyboard", "ARROW_DOWN", "下方向键"],
     ["keyboard", "ARROW_RIGHT", "右方向键"], ["keyboard", "ARROW_UP", "上方向键"],
     ["keyboard", "ENTER", "Enter"], ["keyboard", "BACKSPACE", "Backspace"],
+    ["keyboard", "ESC", "Esc"], ["keyboard", "TAB", "Tab"],
+    ["keyboard", "DELETE", "Delete"],
     ["shortcut", "Ctrl+Win", "Ctrl + Win"], ["layer", "FN", "Fn"]
   ]},
   { label: "常用", options: [
@@ -48,7 +40,8 @@ const actionGroups = [
     ["shortcut", "Ctrl+Z", "撤销"], ["shortcut", "Ctrl+Shift+Z", "重做"]
   ]},
   { label: "媒体", options: [
-    ["media", "PLAY_PAUSE", "播放 / 暂停"], ["media", "VOLUME_UP", "音量 +"],
+    ["media", "PREVIOUS_TRACK", "上一曲"], ["media", "PLAY_PAUSE", "播放 / 暂停"],
+    ["media", "NEXT_TRACK", "下一曲"], ["media", "STOP", "停止"], ["media", "VOLUME_UP", "音量 +"],
     ["media", "VOLUME_DOWN", "音量 -"], ["media", "MUTE", "静音"]
   ]},
   { label: "系统", options: [
@@ -189,7 +182,7 @@ function KeyEditor({ mapping, onClose, onChange }) {
   </div>;
 }
 
-function KeysPage({ profile, updateProfile, status, connect, liveOledFrame }) {
+function KeysPage({ profile, profiles, selectProfile, updateProfile, status, connect, liveOledFrame }) {
   const [selected, setSelected] = useState(null);
   const changeMapping = (next) => {
     updateProfile({ ...profile, mappings: profile.mappings.map((m) => m.key === next.key ? next : m) });
@@ -198,7 +191,7 @@ function KeysPage({ profile, updateProfile, status, connect, liveOledFrame }) {
   return <>
     <DeviceHero status={status} connect={connect}/>
     <section className="content-section">
-      <div className="section-title"><div><p>按键布局</p><h2>选择一个按键进行配置</h2></div><div className="layer-control"><span>当前层</span><button>基础层 <ChevronDown size={14}/></button></div></div>
+      <div className="section-title"><div><p>按键布局</p><h2>选择一个按键进行配置</h2></div><div className="layer-control"><span>当前预设</span><label className="profile-select"><select aria-label="选择当前预设" value={profile.id} onChange={(event) => { setSelected(null); selectProfile(event.target.value); }}>{profiles.map((item) => <option key={item.id} value={item.id}>P{item.slot + 1} · {item.name}</option>)}</select><ChevronDown size={14}/></label></div></div>
       <div className="physical-key-layout">
         <div className="layout-oled">
           <LiveOledCanvas
@@ -294,17 +287,25 @@ function OledPage({ profile, updateProfile }) {
   </section>;
 }
 
-function ProfilesPage({ config, setConfig }) {
-  const add = () => {
-    const id = `profile-${Date.now()}`;
-    const base = config.profiles.find((p) => p.id === config.activeProfile);
-    setConfig({ ...config, activeProfile:id, profiles:[...config.profiles, { ...structuredClone(base), id, name:`配置 ${config.profiles.length + 1}` }] });
+function ProfilesPage({ config, status, syncing, onSelectProfile, onSyncCurrent, onSyncAll }) {
+  const connected = status.state === "connected";
+  const getSyncState = (profile) => {
+    if (!connected || !status.profileCrcs?.length) return "未连接";
+    try {
+      return status.profileCrcs[profile.slot] === profileCrc(profile) ? "已同步" : "未同步";
+    } catch {
+      return "配置有误";
+    }
   };
   return <section className="page-pad">
-    <div className="page-heading"><div className="icon-box"><Layers3/></div><div><span>PROFILES</span><h1>配置文件</h1><p>为不同应用和工作场景准备独立布局。</p></div><button className="primary push" onClick={add}><Plus size={16}/>新建配置</button></div>
-    <div className="profile-list">{config.profiles.map((p, i) => <button key={p.id} className={`profile-card ${p.id === config.activeProfile ? "active" : ""}`} onClick={() => setConfig({ ...config, activeProfile:p.id })}>
-      <div className="profile-number">0{i+1}</div><div><span>{p.id === config.activeProfile ? "当前使用" : "本地配置"}</span><h3>{p.name}</h3><p>8 个按键 · {p.oled.mode === "dashboard" ? "品牌 OLED" : "自定义 OLED"}</p></div><ChevronDown className="profile-chevron"/>
-    </button>)}</div>
+    <div className="page-heading"><div className="icon-box"><Layers3/></div><div><span>PROFILES</span><h1>五套预设</h1><p>在软件中编辑，随后同步到键盘；按住 Fn + KEY1～KEY5 可离线切换。</p></div><div className="profile-actions push"><button className="secondary" disabled={!connected || syncing} onClick={onSyncCurrent}>同步当前</button><button className="primary" disabled={!connected || syncing} onClick={onSyncAll}>{syncing ? "同步中…" : "同步全部"}</button></div></div>
+    <div className="profile-list">{config.profiles.map((p, i) => {
+      const syncState = getSyncState(p);
+      const stateLabel = status.activeProfile === p.slot ? `键盘当前 · ${syncState}` : syncState;
+      return <button key={p.id} className={`profile-card ${p.id === config.activeProfile ? "active" : ""}`} onClick={() => onSelectProfile(p.id)}>
+        <div className="profile-number">0{i+1}</div><div><span>{stateLabel}</span><h3>{p.name}</h3><p>8 个按键 · P{i + 1} · {p.id === config.activeProfile ? "正在编辑" : "点击编辑"}</p></div><ChevronDown className="profile-chevron"/>
+      </button>;
+    })}</div>
   </section>;
 }
 
@@ -347,6 +348,7 @@ export default function App() {
   const bleDeviceRef = useRef(null);
   const latestClaudeStatus = useRef(claudeStatus);
   const saveTimer = useRef(null);
+  const lastDeviceProfile = useRef(null);
 
   useEffect(() => {
     deviceRef.current = new VicoDevice(setStatus, setLiveOledFrame);
@@ -395,10 +397,57 @@ export default function App() {
     return () => clearTimeout(saveTimer.current);
   }, [config]);
 
+  useEffect(() => {
+    if (status.state !== "connected" || !Number.isInteger(status.activeProfile)) {
+      lastDeviceProfile.current = null;
+      return;
+    }
+    if (lastDeviceProfile.current === status.activeProfile) return;
+    lastDeviceProfile.current = status.activeProfile;
+
+    // Keep every page in step with profile changes initiated from the keyboard
+    // (settings menu or Fn + KEY1..KEY5). This also aligns the app immediately
+    // after reconnecting. The ref prevents local editing selections from being
+    // overwritten while the device's active profile has not actually changed.
+    setConfig((current) => {
+      if (!current) return current;
+      const target = current.profiles.find((item) => item.slot === status.activeProfile);
+      return target && target.id !== current.activeProfile
+        ? { ...current, activeProfile: target.id }
+        : current;
+    });
+  }, [status.state, status.activeProfile]);
+
   const profile = useMemo(() => config?.profiles.find((p) => p.id === config.activeProfile) || config?.profiles[0], [config]);
   if (!config || !profile) return <div className="loading"><div className="brand-mark"><span>V</span></div><p>正在准备你的工作台…</p></div>;
 
   const updateProfile = (next) => setConfig({ ...config, profiles:config.profiles.map((p) => p.id === next.id ? next : p) });
+  const selectProfile = async (profileId) => {
+    const target = config.profiles.find((item) => item.id === profileId);
+    if (!target) return;
+
+    // Select immediately so editing feels local and responsive. When the USB
+    // configuration channel is connected, activate the same slot on-device;
+    // this command does not overwrite the profile's key bindings.
+    setConfig((current) => current
+      ? { ...current, activeProfile: target.id }
+      : current);
+    if (status.state !== "connected") return;
+
+    try {
+      await deviceRef.current.activateProfile(target.slot);
+    } catch (error) {
+      // Restore the device-confirmed slot when activation fails so the two
+      // sides never silently show different active profiles.
+      const actualSlot = deviceRef.current?.connectedStatus?.activeProfile;
+      setConfig((current) => {
+        if (!current || !Number.isInteger(actualSlot)) return current;
+        const actual = current.profiles.find((item) => item.slot === actualSlot);
+        return actual ? { ...current, activeProfile: actual.id } : current;
+      });
+      setToast(error.message);
+    }
+  };
   const connect = async () => {
     try { await deviceRef.current.request(); setToast("Vico Keyboard 已连接"); }
     catch (error) { if (error.name !== "NotFoundError") setToast(error.message); }
@@ -411,6 +460,14 @@ export default function App() {
     setSyncing(true);
     try { await deviceRef.current.sync(profile); setToast("配置已同步到键盘"); }
     catch (error) { setToast(error.message); }
+    finally { setSyncing(false); }
+  };
+  const syncAll = async () => {
+    setSyncing(true);
+    try {
+      await deviceRef.current.syncAll(config.profiles, config.activeProfile);
+      setToast("五套预设已全部同步到键盘");
+    } catch (error) { setToast(error.message); }
     finally { setSyncing(false); }
   };
   const connectBle = async () => {
@@ -453,9 +510,9 @@ export default function App() {
     <main className="main">
       <Header status={status} connect={connect} disconnect={disconnect} syncing={syncing} sync={sync}/>
       <div className="scroll-area">
-        {page === "keys" && <KeysPage profile={profile} updateProfile={updateProfile} status={status} connect={connect} liveOledFrame={liveOledFrame}/>}
+        {page === "keys" && <KeysPage profile={profile} profiles={config.profiles} selectProfile={selectProfile} updateProfile={updateProfile} status={status} connect={connect} liveOledFrame={liveOledFrame}/>}
         {page === "oled" && <OledPage profile={profile} updateProfile={updateProfile}/>}
-        {page === "profiles" && <ProfilesPage config={config} setConfig={setConfig}/>}
+        {page === "profiles" && <ProfilesPage config={config} status={status} syncing={syncing} onSelectProfile={selectProfile} onSyncCurrent={sync} onSyncAll={syncAll}/>}
         {page === "claude" && <ClaudePage claudeStatus={claudeStatus} bleStatus={bleStatus} hooksState={hooksState} activity={activity} connecting={bleConnecting} installing={hooksInstalling} onConnect={connectBle} onDisconnect={disconnectBle} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
         {page === "settings" && <SettingsPage config={config} setConfig={setConfig} version={version}/>}
       </div>

@@ -15,7 +15,7 @@ assert.equal(frame.length, 1024);
 const digest = createHash("sha256").update(frame).digest("hex");
 assert.equal(
   digest,
-  "3c7275ba96761f014c264711cbe5f27a3c0202b657815d518bea57baeeda5fe1"
+  "a83dfd38fec5458196c7200e12952a61a1fd43f130b54645e4d1789df3b449d0"
 );
 
 assert.equal(getBitmapPixel(frame, 0, 12), true, "header separator");

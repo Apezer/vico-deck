@@ -80,7 +80,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .section-title p,.page-heading span { color:var(--accent);font-size:9px;letter-spacing:.18em;text-transform:uppercase;margin:0 0 5px; }
 .section-title h2 { font:600 18px "Segoe UI Variable", sans-serif;margin:0; }
 .layer-control { display:flex;align-items:center;gap:9px;color:#68717d;font-size:10px; }
-.layer-control button { border:1px solid #2d333c;background:#14181e;border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:14px;font-size:10px;cursor:pointer; }
+.profile-select { position:relative;display:flex;align-items:center;border:1px solid #2d333c;background:#14181e;border-radius:6px;color:#c7cdd5; }
+.profile-select select { appearance:none;border:0;outline:0;background:transparent;color:inherit;padding:8px 34px 8px 11px;font:500 10px "Segoe UI Variable",sans-serif;cursor:pointer;min-width:162px; }
+.profile-select option { background:#14181e;color:#d6dbe2; }
+.profile-select svg { position:absolute;right:10px;pointer-events:none;color:#75808d; }
+.profile-select:focus-within { border-color:#697583;box-shadow:0 0 0 2px rgba(214,255,56,.08); }
 .key-layout { display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:12px; }
 .physical-key-layout { max-width:920px;margin:0 auto;padding:18px;display:grid;grid-template-columns:repeat(4,minmax(135px,1fr));grid-template-rows:repeat(3,150px);grid-template-areas:"oled oled up knob" "left down right enter" "aux1 aux2 aux3 enter";gap:12px;border:1px solid #343b45;border-radius:17px;background:linear-gradient(145deg,#252b33,#11151a 62%);box-shadow:0 24px 55px rgba(0,0,0,.32),inset 0 1px #4a525d; }
 .layout-oled { grid-area:oled;border:5px solid #282e35;border-radius:8px;background:#020504;color:var(--accent);padding:5px 10px;font-family:monospace;box-shadow:inset 0 0 25px rgba(214,255,56,.07),0 8px 14px rgba(0,0,0,.28);overflow:hidden; }
@@ -204,6 +208,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .profile-card span { color:var(--accent);font-size:8px;letter-spacing:.1em;text-transform:uppercase; }
 .profile-card h3 { margin:4px 0;font-size:14px; }.profile-card p{margin:0;color:#68717d;font-size:9px}
 .profile-chevron { margin-left:auto;transform:rotate(-90deg);color:#606974; }
+.profile-actions { display:flex;gap:8px; }
 .settings-page { max-width:900px; }
 .settings-block { margin-bottom:14px;padding:22px 26px; }
 .secondary { border:1px solid #333a44;background:#191e24;border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:6px;font-size:9px;cursor:pointer; }

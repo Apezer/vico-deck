@@ -134,6 +134,7 @@ export function renderOledTemplate(oled) {
 
   if (oled.mode === "minimal") {
     drawGfxText(bitmap, "Vico ESP32-S3", 0, 0);
+    drawGfxText(bitmap, "P1", 84, 0);
     drawGfxText(bitmap, "USB", 104, 0);
     fillBitmapRect(bitmap, 0, 12, OLED_WIDTH, 1);
 
@@ -152,7 +153,7 @@ export function renderOledTemplate(oled) {
       drawGfxText(bitmap, label, x + Math.floor((boxWidth - labelWidth) / 2), y + 3);
     });
 
-    drawGfxText(bitmap, "18 17 16 15 7 6 5 4", 0, 54);
+    drawGfxText(bitmap, "18 17 16 15 5 6 7 4", 0, 54);
     return bitmap;
   }
 
