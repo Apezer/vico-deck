@@ -9,6 +9,8 @@
     "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "vite build",
     "test": "node test/claude-monitor.test.cjs",
+    "test:oled": "node test/oled-bitmap.test.mjs",
+    "test:twin": "node test/twin-protocol.test.mjs",
     "preview": "vite preview",
     "start": "electron .",
     "dist": "npm run build && electron-builder --win nsis"

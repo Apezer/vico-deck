@@ -19,6 +19,8 @@
   [报告问题](https://github.com/Apezer/vico-deck/issues)
   ·
   [GATT 协议](docs/GATT_PROTOCOL.md)
+  ·
+  [OLED 位图协议](docs/OLED_BITMAP_PROTOCOL.md)
 </div>
 
 ---
@@ -26,6 +28,8 @@
 ## VicoDeck 是什么？
 
 VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLED、配置文件和开发者工作流集中在一个界面中，并可在关闭窗口后继续驻留系统托盘。
+
+按键配置页支持 OLED 数字孪生：连接支持协议 v1 的固件后，软件会显示由键盘回传并通过 CRC32 校验的真实 128 × 64 帧，而不是重新绘制一张近似界面。协议细节见 [OLED_TWIN_PROTOCOL.md](docs/OLED_TWIN_PROTOCOL.md)。
 
 与普通键盘配置器不同，VicoDeck 还能监听 **Claude Code** 的工作状态，并通过蓝牙把“正在思考”“正在调用工具”“任务完成”等事件实时发送到 ESP32-S3，最终显示在键盘的 128×64 OLED 上。
 
@@ -41,8 +45,11 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 
 ### OLED Studio
 
-- 128×64 单色屏实时预览
-- 品牌、极简、统计三种布局
+- 128×64、8192 像素的 1-bit 单色屏逐像素预览
+- 品牌、极简、统计和自由像素画四种布局
+- 画笔、橡皮、反相、清空与本地图片导入
+- PNG / JPEG / WebP / BMP 自动缩放并转换为 1-bit 位图
+- 1024-byte OLED 帧缓冲分片同步协议
 - 自定义主标题、副标题和亮度
 - 电量与连接状态开关
 
@@ -185,7 +192,8 @@ vico-deck/
 ├─ test/
 │  └─ claude-monitor.test.cjs
 ├─ docs/
-│  └─ GATT_PROTOCOL.md
+│  ├─ GATT_PROTOCOL.md
+│  └─ OLED_BITMAP_PROTOCOL.md
 └─ package.json
 ```
 
@@ -198,7 +206,8 @@ vico-deck/
 - [x] Claude Code hooks 状态监听
 - [x] BLE GATT OLED 状态转发
 - [ ] 将按键配置写入 ESP32 NVS
-- [ ] OLED 位图与自定义布局传输
+- [x] OLED 位图编辑与分片传输协议
+- [ ] 固件端接收、校验并持久化 OLED 位图
 - [ ] RGB 灯效配置
 - [ ] 固件升级工具
 - [ ] macOS 支持

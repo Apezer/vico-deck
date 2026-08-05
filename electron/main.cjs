@@ -11,6 +11,10 @@ let mainWindow;
 let tray;
 let isQuitting = false;
 let claudeStatusServer;
+let pendingDeviceSelection = null;
+let deviceSelectionSequence = 0;
+const VICO_USB_VENDOR_ID = 0x3343;
+const VICO_USB_PRODUCT_ID = 0x83cf;
 let latestClaudeStatus = {
   state: "offline",
   tool: "",
@@ -32,14 +36,14 @@ const defaults = {
     id: "default",
     name: "默认配置",
     mappings: [
-      { key: 1, type: "shortcut", value: "Ctrl+C", label: "复制" },
-      { key: 2, type: "shortcut", value: "Ctrl+V", label: "粘贴" },
-      { key: 3, type: "shortcut", value: "Ctrl+Z", label: "撤销" },
-      { key: 4, type: "shortcut", value: "Ctrl+Shift+Z", label: "重做" },
-      { key: 5, type: "media", value: "VOLUME_DOWN", label: "音量 -" },
-      { key: 6, type: "media", value: "PLAY_PAUSE", label: "播放 / 暂停" },
-      { key: 7, type: "media", value: "VOLUME_UP", label: "音量 +" },
-      { key: 8, type: "system", value: "LOCK_SCREEN", label: "锁定屏幕" }
+      { key: 1, type: "keyboard", value: "ARROW_LEFT", label: "左方向键" },
+      { key: 2, type: "keyboard", value: "ARROW_DOWN", label: "下方向键" },
+      { key: 3, type: "keyboard", value: "ARROW_RIGHT", label: "右方向键" },
+      { key: 4, type: "keyboard", value: "ENTER", label: "Enter" },
+      { key: 5, type: "keyboard", value: "BACKSPACE", label: "Backspace" },
+      { key: 6, type: "keyboard", value: "ARROW_UP", label: "上方向键" },
+      { key: 7, type: "shortcut", value: "Ctrl+Win", label: "Ctrl + Win" },
+      { key: 8, type: "layer", value: "FN", label: "Fn" }
     ],
     oled: {
       mode: "dashboard",
@@ -69,6 +73,61 @@ function writeConfig(config) {
   fs.mkdirSync(path.dirname(configPath()), { recursive: true });
   fs.writeFileSync(configPath(), JSON.stringify(config, null, 2), "utf8");
   return config;
+}
+
+function cancelPendingDeviceSelection() {
+  if (!pendingDeviceSelection) return;
+  pendingDeviceSelection.callback("");
+  pendingDeviceSelection = null;
+}
+
+function requestDeviceSelection(type, devices, callback) {
+  const allowedDevices = devices.filter((device) => {
+    if (type === "bluetooth") return /^vico keyboard$/i.test(device.deviceName || "");
+    return Number(device.vendorId) === VICO_USB_VENDOR_ID
+      && Number(device.productId) === VICO_USB_PRODUCT_ID
+      && /^vico keyboard$/i.test(device.productName || "");
+  });
+  const normalized = allowedDevices.map((device) => {
+    const isBluetooth = type === "bluetooth";
+    const name = isBluetooth ? device.deviceName : device.productName;
+    const vendorId = Number(device.vendorId || 0);
+    const productId = Number(device.productId || 0);
+    return {
+      id: device.deviceId,
+      name: name || (isBluetooth ? "未命名蓝牙设备" : "未命名 HID 设备"),
+      vendorId,
+      productId,
+      recommended: /vico keyboard|vico/i.test(name || "")
+    };
+  }).sort((a, b) => Number(b.recommended) - Number(a.recommended));
+
+  if (type === "bluetooth" && pendingDeviceSelection?.type === "bluetooth") {
+    pendingDeviceSelection.callback = callback;
+    pendingDeviceSelection.deviceIds = new Set(normalized.map((device) => device.id));
+    mainWindow.webContents.send("device:selection-requested", {
+      requestId: pendingDeviceSelection.requestId,
+      type,
+      devices: normalized
+    });
+    return;
+  }
+
+  cancelPendingDeviceSelection();
+  const requestId = `${type}-${Date.now()}-${deviceSelectionSequence += 1}`;
+  pendingDeviceSelection = {
+    requestId,
+    type,
+    callback,
+    deviceIds: new Set(normalized.map((device) => device.id))
+  };
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send("device:selection-requested", {
+    requestId,
+    type,
+    devices: normalized
+  });
 }
 
 function createWindow() {
@@ -139,17 +198,11 @@ app.whenReady().then(() => {
   );
   deviceSession.on("select-hid-device", (event, details, callback) => {
     event.preventDefault();
-    const preferred =
-      details.deviceList.find((device) => /vico/i.test(device.productName || "")) ||
-      details.deviceList[0];
-    callback(preferred?.deviceId);
+    requestDeviceSelection("usb", details.deviceList, callback);
   });
   deviceSession.on("select-bluetooth-device", (event, deviceList, callback) => {
     event.preventDefault();
-    const preferred =
-      deviceList.find((device) => /vico keyboard/i.test(device.deviceName || "")) ||
-      deviceList[0];
-    if (preferred) callback(preferred.deviceId);
+    requestDeviceSelection("bluetooth", deviceList, callback);
   });
 
   app.on("activate", () => {
@@ -195,6 +248,16 @@ ipcMain.handle("autostart:set", (_event, enabled) => {
 ipcMain.handle("window:minimize", () => mainWindow.minimize());
 ipcMain.handle("window:hide", () => mainWindow.hide());
 ipcMain.handle("app:version", () => app.getVersion());
+ipcMain.handle("device:select", (_event, selection) => {
+  if (!pendingDeviceSelection || selection?.requestId !== pendingDeviceSelection.requestId) return false;
+  const { callback, deviceIds } = pendingDeviceSelection;
+  pendingDeviceSelection = null;
+  const deviceId = typeof selection.deviceId === "string" && deviceIds.has(selection.deviceId)
+    ? selection.deviceId
+    : "";
+  callback(deviceId);
+  return true;
+});
 ipcMain.handle("claude:status:get", () => latestClaudeStatus);
 ipcMain.handle("claude:hooks:get", () => getHooksState(app.getPath("userData")));
 ipcMain.handle("claude:hooks:install", () => installHooks(app.getPath("userData")));

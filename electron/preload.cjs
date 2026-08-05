@@ -8,6 +8,12 @@ contextBridge.exposeInMainWorld("vico", {
   minimize: () => ipcRenderer.invoke("window:minimize"),
   hide: () => ipcRenderer.invoke("window:hide"),
   getVersion: () => ipcRenderer.invoke("app:version"),
+  selectDevice: (requestId, deviceId) => ipcRenderer.invoke("device:select", { requestId, deviceId }),
+  onDeviceSelection: (callback) => {
+    const listener = (_event, request) => callback(request);
+    ipcRenderer.on("device:selection-requested", listener);
+    return () => ipcRenderer.removeListener("device:selection-requested", listener);
+  },
   getClaudeStatus: () => ipcRenderer.invoke("claude:status:get"),
   getClaudeHooksState: () => ipcRenderer.invoke("claude:hooks:get"),
   installClaudeHooks: () => ipcRenderer.invoke("claude:hooks:install"),

@@ -33,6 +33,7 @@ export default function ClaudePage({
   connecting,
   installing,
   onConnect,
+  onDisconnect,
   onInstallHooks,
   onSendTest
 }) {
@@ -98,9 +99,9 @@ export default function ClaudePage({
         </div>
         <div className="relay-step">
           <div className={bleConnected ? "done" : ""}>{bleConnected ? <CheckCircle2 /> : "2"}</div>
-          <section><b>连接 Vico 蓝牙键盘</b><p>查找 Vico Keyboard ESP32-S3 的自定义 GATT 服务。</p></section>
-          <button className="secondary" disabled={connecting || bleConnected} onClick={onConnect}>
-            {connecting && <RefreshCw className="spin" size={14} />}{bleConnected ? "已连接" : connecting ? "连接中" : "连接"}
+          <section><b>连接 Vico 蓝牙键盘</b><p>选择 Vico Keyboard，并连接自定义 GATT 状态服务。</p></section>
+          <button className="secondary" disabled={connecting} onClick={bleConnected ? onDisconnect : onConnect}>
+            {connecting ? <RefreshCw className="spin" size={14} /> : bleConnected ? <Unplug size={14}/> : null}{bleConnected ? "断开" : connecting ? "连接中" : "选择设备"}
           </button>
         </div>
         <div className="relay-actions">

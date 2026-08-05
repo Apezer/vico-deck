@@ -1,24 +1,48 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BatteryMedium, Bluetooth, ChevronDown, CircleHelp, Command, Cpu, Download,
-  Gauge, Keyboard, Layers3, Monitor, Moon, MoreHorizontal, Play, Plus,
-  Power, RefreshCw, Rocket, Save, Settings, SlidersHorizontal, Sparkles,
-  Sun, Usb, Volume2, WifiOff, X
+  Eraser, Gauge, Keyboard, Layers3, Monitor, Moon, MoreHorizontal, Pencil,
+  Play, Plus, Power, RefreshCw, Rocket, Save, Settings, SlidersHorizontal,
+  Sparkles, Sun, Trash2, Unplug, Upload, Usb, Volume2, WifiOff, X
 } from "lucide-react";
 import { VicoBleDevice, VicoDevice } from "./device";
 import ClaudePage from "./ClaudePage";
+import LiveOledCanvas from "./LiveOledCanvas";
+import OledPixelCanvas from "./OledPixelCanvas";
+import {
+  bitmapFromBase64,
+  bitmapToBase64,
+  createBlankBitmap,
+  importImageBitmap,
+  invertBitmap
+} from "./oled-bitmap";
 
 const fallbackConfig = {
   startAtLogin: false, minimizeToTray: true, closeToTray: true,
   activeProfile: "default",
   profiles: [{
     id: "default", name: "默认配置",
-    mappings: Array.from({ length: 8 }, (_, i) => ({ key: i + 1, type: "keyboard", value: `F${i + 1}`, label: `F${i + 1}` })),
+    mappings: [
+      { key: 1, type: "keyboard", value: "ARROW_LEFT", label: "左方向键" },
+      { key: 2, type: "keyboard", value: "ARROW_DOWN", label: "下方向键" },
+      { key: 3, type: "keyboard", value: "ARROW_RIGHT", label: "右方向键" },
+      { key: 4, type: "keyboard", value: "ENTER", label: "Enter" },
+      { key: 5, type: "keyboard", value: "BACKSPACE", label: "Backspace" },
+      { key: 6, type: "keyboard", value: "ARROW_UP", label: "上方向键" },
+      { key: 7, type: "shortcut", value: "Ctrl+Win", label: "Ctrl + Win" },
+      { key: 8, type: "layer", value: "FN", label: "Fn" }
+    ],
     oled: { mode: "dashboard", title: "VICO", subtitle: "CREATE YOUR FLOW", brightness: 78, sleepMinutes: 5, showBattery: true, showConnection: true }
   }]
 };
 
 const actionGroups = [
+  { label: "键盘", options: [
+    ["keyboard", "ARROW_LEFT", "左方向键"], ["keyboard", "ARROW_DOWN", "下方向键"],
+    ["keyboard", "ARROW_RIGHT", "右方向键"], ["keyboard", "ARROW_UP", "上方向键"],
+    ["keyboard", "ENTER", "Enter"], ["keyboard", "BACKSPACE", "Backspace"],
+    ["shortcut", "Ctrl+Win", "Ctrl + Win"], ["layer", "FN", "Fn"]
+  ]},
   { label: "常用", options: [
     ["shortcut", "Ctrl+C", "复制"], ["shortcut", "Ctrl+V", "粘贴"],
     ["shortcut", "Ctrl+Z", "撤销"], ["shortcut", "Ctrl+Shift+Z", "重做"]
@@ -31,6 +55,17 @@ const actionGroups = [
     ["system", "LOCK_SCREEN", "锁定屏幕"], ["system", "SHOW_DESKTOP", "显示桌面"],
     ["system", "SCREENSHOT", "截图"], ["system", "DO_NOTHING", "无操作"]
   ]}
+];
+
+const physicalKeySlots = [
+  { key:8, area:"up" },
+  { key:7, area:"left" },
+  { key:6, area:"down" },
+  { key:5, area:"right" },
+  { key:1, area:"aux1" },
+  { key:2, area:"aux2" },
+  { key:3, area:"aux3" },
+  { key:4, area:"enter" }
 ];
 
 function Toggle({ value, onChange, disabled }) {
@@ -57,35 +92,76 @@ function Sidebar({ page, setPage }) {
   </aside>;
 }
 
-function Header({ status, connect, syncing, sync }) {
+function Header({ status, connect, disconnect, syncing, sync }) {
   const connected = status.state === "connected";
+  const connecting = status.state === "connecting";
   return <header className="topbar">
     <div className="crumb"><span>Vico Keyboard</span><ChevronDown size={15}/></div>
     <div className="top-actions">
-      <div className={`device-pill ${connected ? "connected" : ""}`}><span className="status-dot"/>{connected ? status.name : "设备未连接"}</div>
+      <div className={`device-pill ${connected ? "connected" : connecting ? "connecting" : ""}`}><span className="status-dot"/>{connected ? status.name : connecting ? "正在验证 Vico 固件" : "设备未连接"}</div>
       <button className="ghost square"><MoreHorizontal size={19}/></button>
-      <button className="connect-btn" onClick={connected ? sync : connect} disabled={syncing}>
-        {syncing ? <RefreshCw className="spin" size={16}/> : connected ? <Save size={16}/> : <Usb size={16}/>}
-        {syncing ? "正在同步" : connected ? "同步到设备" : "连接设备"}
+      {connected && <button className="secondary header-disconnect" onClick={disconnect}><Unplug size={15}/>断开</button>}
+      <button className="connect-btn" onClick={connected ? sync : connect} disabled={syncing || connecting}>
+        {syncing || connecting ? <RefreshCw className="spin" size={16}/> : connected ? <Save size={16}/> : <Usb size={16}/>}
+        {syncing ? "正在同步" : connecting ? "正在连接" : connected ? "同步到设备" : "连接设备"}
       </button>
     </div>
   </header>;
 }
 
+function DeviceSelectionDialog({ request, onSelect }) {
+  if (!request) return null;
+  const bluetooth = request.type === "bluetooth";
+  const formatId = (value) => Number(value || 0).toString(16).toUpperCase().padStart(4, "0");
+  return <div className="device-picker-backdrop" onMouseDown={() => onSelect("")}>
+    <section className="device-picker" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="device-picker-head">
+        <div className="device-picker-icon">{bluetooth ? <Bluetooth/> : <Usb/>}</div>
+        <div><span>{bluetooth ? "BLUETOOTH GATT" : "USB WEBHID"}</span><h2>选择要连接的设备</h2></div>
+        <button className="ghost square" onClick={() => onSelect("")}><X size={19}/></button>
+      </div>
+      <p className="device-picker-help">
+        {bluetooth ? "这里只显示名称为 Vico Keyboard 的设备。" : "这里只显示通过 Vico 产品名和 USB VID/PID 双重验证的设备，其他键盘会被自动忽略。"}
+      </p>
+      <div className="device-picker-list">
+        {request.devices.length === 0 && <div className="device-picker-empty">没有发现 Vico Keyboard，请确认模式与连接状态，并重新插拔设备。</div>}
+        {request.devices.map((device) => <button key={device.id} onClick={() => onSelect(device.id)}>
+          <span className="device-choice-icon">{bluetooth ? <Bluetooth/> : <Keyboard/>}</span>
+          <span className="device-choice-copy">
+            <b>{device.name}</b>
+            <small>{bluetooth ? `设备 ID · ${device.id.slice(-8)}` : `VID ${formatId(device.vendorId)} · PID ${formatId(device.productId)}`}</small>
+          </span>
+          {device.recommended ? <em>VICO</em> : <small>其他设备</small>}
+        </button>)}
+      </div>
+      <div className="device-picker-foot"><button className="secondary" onClick={() => onSelect("")}>取消</button></div>
+    </section>
+  </div>;
+}
+
 function DeviceHero({ status, connect }) {
   const connected = status.state === "connected";
+  const connecting = status.state === "connecting";
   return <section className="device-hero">
     <div>
       <div className="eyebrow"><span className="live-dot"/> VICO 8 · ESP32-S3</div>
       <h1>让每一次触发，<br/><em>都恰到好处。</em></h1>
       <p>8 个可编程按键与一块属于你的 OLED。<br/>为常用动作创建更短、更自然的路径。</p>
-      {!connected && <button className="hero-connect" onClick={connect}><Usb size={17}/>连接 Vico 8</button>}
+      {!connected && !connecting && <button className="hero-connect" onClick={connect}><Usb size={17}/>连接 Vico 8</button>}
     </div>
     <div className="device-visual">
       <div className="glow"/>
       <div className="keyboard-shell">
-        <div className="mini-oled"><b>VICO</b><span>READY TO CREATE</span><i/></div>
-        <div className="mini-keys">{Array.from({ length: 8 }, (_, i) => <span key={i}>{i + 1}</span>)}</div>
+        <div className="mini-oled"><b>VICO KEYBOARD</b><span>CLAUDE CODE · WORKING...</span><i/></div>
+        <span className="mini-key mini-up">↑</span>
+        <div className="mini-knob"><i/></div>
+        <span className="mini-key mini-left">←</span>
+        <span className="mini-key mini-down">↓</span>
+        <span className="mini-key mini-right">→</span>
+        <span className="mini-key mini-aux1"/>
+        <span className="mini-key mini-aux2"/>
+        <span className="mini-key mini-aux3"/>
+        <span className="mini-key mini-enter">ENTER</span>
       </div>
       <div className="connection-tag">{connected ? <><BatteryMedium size={16}/> 86% · USB</> : <><WifiOff size={16}/> 等待连接</>}</div>
     </div>
@@ -113,7 +189,7 @@ function KeyEditor({ mapping, onClose, onChange }) {
   </div>;
 }
 
-function KeysPage({ profile, updateProfile, status, connect }) {
+function KeysPage({ profile, updateProfile, status, connect, liveOledFrame }) {
   const [selected, setSelected] = useState(null);
   const changeMapping = (next) => {
     updateProfile({ ...profile, mappings: profile.mappings.map((m) => m.key === next.key ? next : m) });
@@ -123,45 +199,96 @@ function KeysPage({ profile, updateProfile, status, connect }) {
     <DeviceHero status={status} connect={connect}/>
     <section className="content-section">
       <div className="section-title"><div><p>按键布局</p><h2>选择一个按键进行配置</h2></div><div className="layer-control"><span>当前层</span><button>基础层 <ChevronDown size={14}/></button></div></div>
-      <div className="key-layout">
-        {profile.mappings.map((mapping) => <button key={mapping.key} className="key-card" onClick={() => setSelected(mapping)}>
-          <div className="key-top"><span>KEY {mapping.key}</span><SlidersHorizontal size={15}/></div>
-          <div className="keycap"><b>{mapping.label.length <= 4 ? mapping.label : mapping.key}</b><i/></div>
-          <b className="action-label">{mapping.label}</b><small>{mapping.value}</small>
-        </button>)}
+      <div className="physical-key-layout">
+        <div className="layout-oled">
+          <LiveOledCanvas
+            frame={liveOledFrame}
+            connected={status.state === "connected"}
+          />
+        </div>
+        <div className="layout-knob"><div/><span>旋钮</span></div>
+        {physicalKeySlots.map((slot) => {
+          const mapping = profile.mappings.find((item) => item.key === slot.key);
+          if (!mapping) return null;
+          return <button
+            key={mapping.key}
+            className={`key-card physical-key-card slot-${slot.area}`}
+            onClick={() => setSelected(mapping)}
+          >
+            <div className="key-top"><span>KEY {mapping.key}</span><SlidersHorizontal size={15}/></div>
+            <div className={`keycap ${slot.area === "enter" ? "tall" : ""}`}><b>{mapping.label.length <= 4 ? mapping.label : mapping.key}</b><i/></div>
+            <b className="action-label">{mapping.label}</b><small>{mapping.value}</small>
+          </button>;
+        })}
       </div>
     </section>
     {selected && <KeyEditor mapping={selected} onClose={() => setSelected(null)} onChange={changeMapping}/>}
   </>;
 }
 
-function OledPreview({ oled }) {
-  return <div className="oled-device">
-    <div className="oled-screen" style={{ opacity: .35 + oled.brightness / 155 }}>
-      <div className="oled-status"><span>{oled.showConnection ? "USB" : ""}</span><span>{oled.showBattery ? "86%" : ""}</span></div>
-      {oled.mode === "minimal" ? <><h4>{oled.title}</h4><div className="oled-line"/></> :
-       oled.mode === "stats" ? <><h4>72 WPM</h4><p>KEYS 1,284</p><div className="oled-bars"><i/><i/><i/><i/><i/></div></> :
-       <><h4>{oled.title || "VICO"}</h4><p>{oled.subtitle || "CREATE YOUR FLOW"}</p><div className="oled-wave">⌁⌁⌁⌁⌁</div></>}
-    </div>
-  </div>;
-}
-
 function OledPage({ profile, updateProfile }) {
   const oled = profile.oled;
+  const [tool, setTool] = useState("draw");
+  const [importMessage, setImportMessage] = useState("");
+  const imageInputRef = useRef(null);
   const set = (patch) => updateProfile({ ...profile, oled: { ...oled, ...patch } });
+  const setMode = (mode) => set({
+    mode,
+    ...(mode === "custom" && !oled.bitmap
+      ? { bitmap: bitmapToBase64(createBlankBitmap()) }
+      : {})
+  });
+  const setBitmap = (bitmap) => set({ mode:"custom", bitmap });
+  const importImage = async (event) => {
+    const [file] = event.target.files || [];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const bitmap = await importImageBitmap(file);
+      setBitmap(bitmapToBase64(bitmap));
+      setImportMessage(`${file.name} 已转换为 1-bit 位图`);
+    } catch (error) {
+      setImportMessage(error.message);
+    }
+  };
+
   return <section className="page-pad">
     <div className="page-heading"><div className="icon-box"><Monitor/></div><div><span>OLED STUDIO</span><h1>设计你的显示界面</h1><p>预览会实时呈现最终的 128 × 64 单色画面。</p></div></div>
     <div className="oled-grid">
-      <div className="oled-preview-card"><div className="card-label"><span>实时预览</span><span>128 × 64 PX</span></div><OledPreview oled={oled}/><p>拖动亮度滑块，预览真实屏幕的明暗效果</p></div>
+      <div className="oled-preview-card">
+        <div className="card-label"><span>逐像素实时预览</span><span>128 × 64 · 1-BIT</span></div>
+        <OledPixelCanvas oled={oled} tool={tool} onBitmapChange={setBitmap}/>
+        <p>{oled.mode === "custom" ? "拖动鼠标绘制；每个小方块对应 OLED 的一个真实像素" : "模板也会先栅格化为真实的 128 × 64 像素"}</p>
+      </div>
       <div className="settings-card">
         <h2>显示内容</h2>
         <label>布局样式</label>
-        <div className="mode-tabs">{[["dashboard","品牌"],["minimal","极简"],["stats","统计"]].map(([id,label]) => <button className={oled.mode === id ? "active" : ""} onClick={() => set({ mode:id })} key={id}>{label}</button>)}</div>
-        <label>主标题</label><input maxLength={16} value={oled.title} onChange={(e) => set({ title:e.target.value.toUpperCase() })}/>
-        <label>副标题</label><input maxLength={24} value={oled.subtitle} onChange={(e) => set({ subtitle:e.target.value.toUpperCase() })}/>
+        <div className="mode-tabs four">{[["dashboard","品牌"],["minimal","极简"],["stats","统计"],["custom","像素画"]].map(([id,label]) => <button className={oled.mode === id ? "active" : ""} onClick={() => setMode(id)} key={id}>{label}</button>)}</div>
+        {oled.mode === "custom" ? <div className="pixel-tools">
+          <div className="pixel-tool-row">
+            <button className={tool === "draw" ? "active" : ""} onClick={() => setTool("draw")}><Pencil size={14}/>画笔</button>
+            <button className={tool === "erase" ? "active" : ""} onClick={() => setTool("erase")}><Eraser size={14}/>橡皮</button>
+            <button onClick={() => setBitmap(bitmapToBase64(invertBitmap(bitmapFromBase64(oled.bitmap))))}>反相</button>
+          </div>
+          <div className="pixel-tool-row">
+            <button onClick={() => imageInputRef.current?.click()}><Upload size={14}/>导入图片</button>
+            <button className="danger-subtle" onClick={() => setBitmap(bitmapToBase64(createBlankBitmap()))}><Trash2 size={14}/>清空</button>
+          </div>
+          <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/bmp" hidden onChange={importImage}/>
+          <p className="pixel-help">图片会等比缩放到 128 × 64，并转换为黑白 1-bit 数据。推荐使用高对比度 PNG。</p>
+          {importMessage && <p className="pixel-import-message">{importMessage}</p>}
+        </div> : oled.mode === "minimal" ? <div className="firmware-layout-note">
+          <b>固件默认界面</b>
+          <p>预览当前固件的标题栏、连接模式、2 × 4 按键状态和 GPIO 映射。实际设备会根据按键与 USB/BLE 状态动态刷新。</p>
+        </div> : <>
+          <label>主标题</label><input maxLength={16} value={oled.title} onChange={(e) => set({ title:e.target.value.toUpperCase() })}/>
+          <label>副标题</label><input maxLength={24} value={oled.subtitle} onChange={(e) => set({ subtitle:e.target.value.toUpperCase() })}/>
+        </>}
         <div className="range-label"><label>屏幕亮度</label><b>{oled.brightness}%</b></div><input className="range" type="range" min="10" max="100" value={oled.brightness} onChange={(e) => set({ brightness:Number(e.target.value) })}/>
-        <div className="setting-row compact"><div><b>显示连接状态</b><span>USB / 蓝牙状态图标</span></div><Toggle value={oled.showConnection} onChange={(v) => set({ showConnection:v })}/></div>
-        <div className="setting-row compact"><div><b>显示电量</b><span>无线模式下显示剩余电量</span></div><Toggle value={oled.showBattery} onChange={(v) => set({ showBattery:v })}/></div>
+        {oled.mode !== "custom" && oled.mode !== "minimal" && <>
+          <div className="setting-row compact"><div><b>显示连接状态</b><span>USB / 蓝牙状态图标</span></div><Toggle value={oled.showConnection} onChange={(v) => set({ showConnection:v })}/></div>
+          <div className="setting-row compact"><div><b>显示电量</b><span>无线模式下显示剩余电量</span></div><Toggle value={oled.showBattery} onChange={(v) => set({ showBattery:v })}/></div>
+        </>}
       </div>
     </div>
   </section>;
@@ -214,13 +341,15 @@ export default function App() {
   const [activity, setActivity] = useState([]);
   const [bleConnecting, setBleConnecting] = useState(false);
   const [hooksInstalling, setHooksInstalling] = useState(false);
+  const [deviceSelection, setDeviceSelection] = useState(null);
+  const [liveOledFrame, setLiveOledFrame] = useState(null);
   const deviceRef = useRef(null);
   const bleDeviceRef = useRef(null);
   const latestClaudeStatus = useRef(claudeStatus);
   const saveTimer = useRef(null);
 
   useEffect(() => {
-    deviceRef.current = new VicoDevice(setStatus);
+    deviceRef.current = new VicoDevice(setStatus, setLiveOledFrame);
     deviceRef.current.restore().catch(() => {});
     bleDeviceRef.current = new VicoBleDevice(setBleStatus, () => {});
     bleDeviceRef.current.restore().catch(() => {});
@@ -246,7 +375,11 @@ export default function App() {
       setActivity((items) => [nextStatus, ...items].slice(0, 10));
       bleDeviceRef.current?.writeClaudeStatus(nextStatus).catch(() => {});
     });
-    return () => removeClaudeListener?.();
+    const removeDeviceSelectionListener = window.vico?.onDeviceSelection?.(setDeviceSelection);
+    return () => {
+      removeClaudeListener?.();
+      removeDeviceSelectionListener?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -270,6 +403,10 @@ export default function App() {
     try { await deviceRef.current.request(); setToast("Vico Keyboard 已连接"); }
     catch (error) { if (error.name !== "NotFoundError") setToast(error.message); }
   };
+  const disconnect = async () => {
+    try { await deviceRef.current.disconnect(); setToast("USB 配置通道已断开"); }
+    catch (error) { setToast(error.message); }
+  };
   const sync = async () => {
     setSyncing(true);
     try { await deviceRef.current.sync(profile); setToast("配置已同步到键盘"); }
@@ -285,6 +422,16 @@ export default function App() {
     } catch (error) {
       if (error.name !== "NotFoundError") setToast(error.message);
     } finally { setBleConnecting(false); }
+  };
+  const disconnectBle = () => {
+    bleDeviceRef.current.disconnect();
+    setToast("Vico 蓝牙状态通道已断开");
+  };
+  const selectDevice = async (deviceId) => {
+    if (!deviceSelection) return;
+    const requestId = deviceSelection.requestId;
+    setDeviceSelection(null);
+    await window.vico?.selectDevice?.(requestId, deviceId);
   };
   const installHooks = async () => {
     setHooksInstalling(true);
@@ -304,15 +451,16 @@ export default function App() {
   return <div className="app-shell">
     <Sidebar page={page} setPage={setPage}/>
     <main className="main">
-      <Header status={status} connect={connect} syncing={syncing} sync={sync}/>
+      <Header status={status} connect={connect} disconnect={disconnect} syncing={syncing} sync={sync}/>
       <div className="scroll-area">
-        {page === "keys" && <KeysPage profile={profile} updateProfile={updateProfile} status={status} connect={connect}/>}
+        {page === "keys" && <KeysPage profile={profile} updateProfile={updateProfile} status={status} connect={connect} liveOledFrame={liveOledFrame}/>}
         {page === "oled" && <OledPage profile={profile} updateProfile={updateProfile}/>}
         {page === "profiles" && <ProfilesPage config={config} setConfig={setConfig}/>}
-        {page === "claude" && <ClaudePage claudeStatus={claudeStatus} bleStatus={bleStatus} hooksState={hooksState} activity={activity} connecting={bleConnecting} installing={hooksInstalling} onConnect={connectBle} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
+        {page === "claude" && <ClaudePage claudeStatus={claudeStatus} bleStatus={bleStatus} hooksState={hooksState} activity={activity} connecting={bleConnecting} installing={hooksInstalling} onConnect={connectBle} onDisconnect={disconnectBle} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
         {page === "settings" && <SettingsPage config={config} setConfig={setConfig} version={version}/>}
       </div>
     </main>
+    <DeviceSelectionDialog request={deviceSelection} onSelect={selectDevice}/>
     {toast && <div className="toast" onAnimationEnd={() => setToast("")}><Sparkles size={15}/>{toast}</div>}
   </div>;
 }
