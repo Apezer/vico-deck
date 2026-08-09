@@ -7,11 +7,13 @@ const {
   installHooks,
   startStatusServer
 } = require("./claude-monitor.cjs");
+const { startSystemMonitor } = require("./system-monitor.cjs");
 
 let mainWindow;
 let tray;
 let isQuitting = false;
 let claudeStatusServer;
+let systemMonitor;
 let pendingDeviceSelection = null;
 let deviceSelectionSequence = 0;
 const VICO_USB_VENDOR_ID = 0x3343;
@@ -21,6 +23,14 @@ let latestClaudeStatus = {
   tool: "",
   text: "Waiting for Claude Code",
   event: "None",
+  updatedAt: 0
+};
+let latestSystemStatus = {
+  cpu: 0,
+  gpu: null,
+  memory: 0,
+  temperature: null,
+  online: true,
   updatedAt: 0
 };
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -33,6 +43,8 @@ const defaults = {
   closeToTray: true,
   launchMinimized: false,
   theme: "dark",
+  oledRuntime: { page:"brand", autoClaude:true },
+  rgb: { effect:0, brightness:50, speed:100, enabled:true, color:"#D6FF38" },
   activeProfile: "preset-1",
   profiles: structuredClone(defaultProfiles)
 };
@@ -136,6 +148,7 @@ function requestDeviceSelection(type, devices, callback) {
 
 function createWindow() {
   const config = readConfig();
+  const iconPath = path.join(__dirname, "..", "asserts", "vico-keyboard.ico");
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -143,13 +156,23 @@ function createWindow() {
     minHeight: 680,
     show: !(config.launchMinimized && process.argv.includes("--hidden")),
     backgroundColor: "#090b0f",
+    icon: iconPath,
     titleBarStyle: "hidden",
     titleBarOverlay: { color: "#090b0f", symbolColor: "#8a919e", height: 46 },
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: false
     }
+  });
+
+  // Web Bluetooth 的设备选择事件属于发起请求的 WebContents，而不是 Session。
+  // 扫描期间 Electron 会多次触发该事件，requestDeviceSelection() 会复用同一请求
+  // 并持续更新软件内的设备列表，直到用户选择设备或主动取消。
+  mainWindow.webContents.on("select-bluetooth-device", (event, deviceList, callback) => {
+    event.preventDefault();
+    requestDeviceSelection("bluetooth", deviceList, callback);
   });
 
   if (app.isPackaged) {
@@ -168,7 +191,7 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, "..", "asserts", "usb.png");
+  const iconPath = path.join(__dirname, "..", "asserts", "vico-keyboard.png");
   const icon = nativeImage.createFromPath(iconPath).resize({ width: 20, height: 20 });
   tray = new Tray(icon);
   tray.setToolTip("Vico Keyboard");
@@ -191,6 +214,12 @@ app.whenReady().then(() => {
       mainWindow.webContents.send("claude:status", status);
     }
   });
+  systemMonitor = startSystemMonitor((status) => {
+    latestSystemStatus = status;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("system:status", status);
+    }
+  });
 
   // WebHID 访问仅限用户明确选择的设备。
   const deviceSession = mainWindow.webContents.session;
@@ -204,11 +233,6 @@ app.whenReady().then(() => {
     event.preventDefault();
     requestDeviceSelection("usb", details.deviceList, callback);
   });
-  deviceSession.on("select-bluetooth-device", (event, deviceList, callback) => {
-    event.preventDefault();
-    requestDeviceSelection("bluetooth", deviceList, callback);
-  });
-
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     else mainWindow.show();
@@ -233,6 +257,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   isQuitting = true;
   claudeStatusServer?.close();
+  systemMonitor?.close();
 });
 
 ipcMain.handle("config:get", () => readConfig());
@@ -263,6 +288,7 @@ ipcMain.handle("device:select", (_event, selection) => {
   return true;
 });
 ipcMain.handle("claude:status:get", () => latestClaudeStatus);
+ipcMain.handle("system:status:get", () => latestSystemStatus);
 ipcMain.handle("claude:hooks:get", () => getHooksState(app.getPath("userData")));
 ipcMain.handle("claude:hooks:install", () => installHooks(app.getPath("userData")));
 ipcMain.handle("external:open", (_event, url) => {

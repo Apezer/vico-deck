@@ -161,7 +161,10 @@ export function renderOledTemplate(oled) {
     drawGfxText(bitmap, "USB", 1, 1);
   }
   if (oled.showBattery) {
-    drawGfxText(bitmap, "86%", 108, 1);
+    const battery = Number.isFinite(oled.batteryPercent)
+      ? `${Math.max(0, Math.min(100, Math.round(oled.batteryPercent)))}%`
+      : "--%";
+    drawGfxText(bitmap, battery.padStart(4, " "), 104, 1);
   }
   fillBitmapRect(bitmap, 0, 10, OLED_WIDTH, 1);
 

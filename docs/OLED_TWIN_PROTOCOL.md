@@ -33,10 +33,17 @@ Multi-byte integers are little-endian.
 | --- | ---: | --- | --- |
 | Host → device | `01` | `HELLO` | Requested protocol version |
 | Host → device | `02` | `DISPLAY_SUBSCRIBE` | `01` subscribe, `00` unsubscribe |
-| Device → host | `81` | `HELLO_ACK` | Protocol, width, height, format, firmware version, `VICO` |
+| Device → host | `81` | `HELLO_ACK` | Protocol, display/profile information, battery percentage and voltage |
 | Device → host | `82` | `FRAME_BEGIN` | Frame ID, length, CRC32, format |
 | Device → host | `83` | `FRAME_CHUNK` | Frame ID, offset, up to 56 framebuffer bytes |
 | Device → host | `84` | `FRAME_END` | Frame ID and CRC32 |
+| Device → host | `93` | `BATTERY_STATUS_CHANGED` | Percentage, battery voltage in mV |
+
+`HELLO_ACK` keeps the existing display and profile fields, then appends three
+battery bytes after the five profile CRC32 values: percentage (`0..100`) followed
+by voltage in mV as an unsigned little-endian `uint16`. A voltage value of `0`
+means that no valid battery voltage was detected. Command `93` uses the same
+three-byte payload and is emitted whenever the filtered reading changes visibly.
 
 ## Frame format
 

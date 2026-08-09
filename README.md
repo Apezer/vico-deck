@@ -23,6 +23,8 @@
   [OLED 位图协议](docs/OLED_BITMAP_PROTOCOL.md)
   ·
   [五预设协议](docs/KEY_PROFILE_PROTOCOL.md)
+  ·
+  [OLED 运行时协议](docs/OLED_RUNTIME_PROTOCOL.md)
 </div>
 
 ---
@@ -42,6 +44,9 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 - 2×4、共 8 个可编程按键
 - 快捷键、媒体键和系统操作
 - 五套固定预设，可分别编辑并同步到键盘 NVS
+- OLED 实时页面：Claude Code、CPU/GPU/内存、时钟日期和设备状态
+- RGB 灯光工作室：六种灯效、亮度、速度和总开关，通过 USB/BLE 实时同步
+- USB WebHID 与 BLE GATT 共用紧凑运行时状态协议
 - Fn + KEY1～KEY5 可在不运行软件时切换 P1～P5
 - 通过设备 CRC 自动判断每套预设是否已经同步
 - 配置自动保存
@@ -50,12 +55,12 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 ### OLED Studio
 
 - 128×64、8192 像素的 1-bit 单色屏逐像素预览
-- 品牌、极简、统计和自由像素画四种布局
-- 画笔、橡皮、反相、清空与本地图片导入
-- PNG / JPEG / WebP / BMP 自动缩放并转换为 1-bit 位图
+- 品牌、Coding、性能、时钟、键盘和自定义像素画六种显示内容
+- 使用下拉框切换页面，并与键盘双向同步
+- 性能页面实时显示电脑 CPU、GPU 和内存占用
+- 自定义像素画支持画笔、橡皮、反相、清空和本地图片导入
 - 1024-byte OLED 帧缓冲分片同步协议
-- 自定义主标题、副标题和亮度
-- 电量与连接状态开关
+- OLED 亮度设置
 
 ### Claude Code Relay
 
@@ -81,8 +86,8 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 1. 从 [Releases](https://github.com/Apezer/vico-deck/releases/latest) 下载 `VicoDeck-Setup-Windows.exe`。
 2. 安装并打开 VicoDeck。
 3. 进入左侧 **Claude Code** 页面。
-4. 点击 **安装 Claude Code hooks**。
-5. 点击 **连接 Vico 蓝牙键盘**，在系统列表中选择设备。
+4. 点击 **安装或升级 Claude Code hooks**。
+5. 通过 USB 连接键盘，或点击 **选择蓝牙** 连接 BLE GATT 服务。
 6. 点击 **发送测试状态**，确认 OLED 收到内容。
 7. 新开一个 Claude Code 会话。
 
@@ -102,7 +107,13 @@ VicoDeck 会把自己的 hook 条目合并到：
 http://127.0.0.1:38471/claude-status
 ```
 
-服务只监听回环地址，不对局域网或互联网开放。新 hooks 从下一次 Claude Code 会话开始生效。
+服务只监听回环地址，不对局域网或互联网开放。Hook v3 监听会话、工具、权限请求、
+通知、子代理、完成及异常停止事件；新 hooks 从下一次 Claude Code 会话开始生效。
+多个 Claude Code 会话会按“等待用户 > 错误 > 工具 > 工作 > 就绪 > 完成”的优先级合并，
+十分钟没有任何事件的会话会自动过期，避免 OLED 永久停留在工作状态。
+
+Hook v3 把 PowerShell 脚本路径和事件名写入一条完整命令，兼容会忽略独立 `args`
+数组的 Claude Code 2.1.105，也兼容新版 VS Code 扩展。
 
 ## 工作原理
 
@@ -110,24 +121,23 @@ http://127.0.0.1:38471/claude-status
 flowchart LR
     A["Claude Code Hooks"] -->|"state / tool / text"| B["VicoDeck 后台服务"]
     B --> C["React 状态界面"]
-    B -->|"BLE GATT"| D["ESP32-S3"]
+    B -->|"USB HID / BLE GATT"| D["ESP32-S3"]
     D --> E["SSD1306 OLED"]
 
     F["系统托盘"] --> B
     G["开机自启动"] --> B
 ```
 
-Claude Code 状态最终被转换为固件当前支持的紧凑 JSON：
+Claude Code 状态会编码为固件支持的两个固定 32 字节二进制数据包，分别携带
+`state/tool` 和 `text`；BLE 还兼容参考项目使用的紧凑 JSON。逻辑状态包含：
 
-```json
-{
-  "state": "tool",
-  "tool": "Bash",
-  "text": "Running Bash"
-}
+```text
+offline / ready / working / tool / waiting / done / error
 ```
 
 为适配 SSD1306 默认字体，转发到 OLED 的动态文本会清理为短 ASCII 内容。
+Coding 页面参考 ESP32C3-Ble-Vico：以大号 Claude 状态和 32×16 图标为主体，
+思考时线段围绕图标流动，同时显示当前工具、任务详情、活跃会话数和最近活动时间。
 
 ## 兼容固件
 
@@ -209,11 +219,12 @@ vico-deck/
 - [x] 五套可编辑预设
 - [x] 托盘与开机自启动
 - [x] Claude Code hooks 状态监听
-- [x] BLE GATT OLED 状态转发
+- [x] USB HID / BLE GATT OLED 状态转发
+- [x] Claude Code 多会话聚合、权限等待与超时恢复
 - [x] 将按键配置写入 ESP32 NVS
 - [x] OLED 位图编辑与分片传输协议
 - [ ] 固件端接收、校验并持久化 OLED 位图
-- [ ] RGB 灯效配置
+- [x] RGB 灯效配置与设备端持久化
 - [ ] 固件升级工具
 - [ ] macOS 支持
 - [ ] 正式代码签名

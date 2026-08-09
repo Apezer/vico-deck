@@ -12,6 +12,10 @@
     "test:oled": "node test/oled-bitmap.test.mjs",
     "test:twin": "node test/twin-protocol.test.mjs",
     "test:profiles": "node test/profile-protocol.test.mjs",
+    "test:runtime": "node test/runtime-protocol.test.mjs",
+    "test:runtime-preview": "node test/oled-runtime-preview.test.mjs",
+    "test:system": "node test/system-monitor.test.cjs",
+    "test:ble": "node test/ble-reconnect.test.mjs",
     "preview": "vite preview",
     "start": "electron .",
     "dist": "npm run build && electron-builder --win nsis"
@@ -43,9 +47,12 @@
     ],
     "win": {
       "target": "nsis",
+      "icon": "asserts/vico-keyboard.ico",
       "signAndEditExecutable": false
     },
     "nsis": {
+      "installerIcon": "asserts/vico-keyboard.ico",
+      "uninstallerIcon": "asserts/vico-keyboard.ico",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,

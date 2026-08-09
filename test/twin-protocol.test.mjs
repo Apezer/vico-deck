@@ -53,6 +53,10 @@ const damaged = buildHidReport(TWIN_COMMAND.HELLO, [1]);
 damaged[10] ^= 0xff;
 assert.equal(parseHidReport(damaged), null, "checksum corruption must be rejected");
 
+const batteryEvent = parseHidReport(buildHidReport(0x93, [72, ...uint16(3928)]));
+assert.equal(batteryEvent.command, 0x93);
+assert.deepEqual([...batteryEvent.payload], [72, 0x58, 0x0f]);
+
 const ssd1306 = new Uint8Array(OLED_TWIN_FRAME_BYTES);
 ssd1306[5] = 0b00000100;
 ssd1306[128 + 9] = 0b10000000;

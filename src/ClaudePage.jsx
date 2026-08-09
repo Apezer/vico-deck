@@ -7,7 +7,8 @@ import {
   Radio,
   RefreshCw,
   TerminalSquare,
-  Unplug
+  Unplug,
+  Usb
 } from "lucide-react";
 
 const STATE_LABELS = {
@@ -15,7 +16,7 @@ const STATE_LABELS = {
   ready: "会话已就绪",
   working: "正在思考",
   tool: "正在使用工具",
-  waiting: "等待处理",
+  waiting: "等待用户输入",
   done: "任务已完成",
   error: "执行遇到错误"
 };
@@ -27,6 +28,7 @@ function formatTime(value) {
 
 export default function ClaudePage({
   claudeStatus,
+  usbStatus,
   bleStatus,
   hooksState,
   activity,
@@ -38,6 +40,8 @@ export default function ClaudePage({
   onSendTest
 }) {
   const bleConnected = bleStatus.state === "connected";
+  const usbConnected = usbStatus.state === "connected";
+  const transportConnected = usbConnected || bleConnected;
   const hooksInstalled = hooksState?.installed;
 
   return <section className="page-pad claude-page">
@@ -46,30 +50,30 @@ export default function ClaudePage({
       <div>
         <span>CLAUDE CODE RELAY</span>
         <h1>Claude Code 状态转发</h1>
-        <p>后台捕获 Claude Code 生命周期事件，并通过 BLE GATT 转发到键盘 OLED。</p>
+        <p>后台捕获 Claude Code 生命周期事件，并通过 USB 或 BLE 转发到键盘 OLED。</p>
       </div>
-      <div className={`relay-health ${hooksInstalled && bleConnected ? "online" : ""}`}>
-        <i />{hooksInstalled && bleConnected ? "转发服务运行中" : "等待完成设置"}
+      <div className={`relay-health ${hooksInstalled && transportConnected ? "online" : ""}`}>
+        <i />{hooksInstalled && transportConnected ? "转发服务运行中" : "等待完成设置"}
       </div>
     </div>
 
     <div className="relay-flow">
       <div className={`relay-node ${hooksInstalled ? "ready" : ""}`}>
         <div className="relay-node-icon"><TerminalSquare /></div>
-        <div><span>01 · SOURCE</span><b>Claude Code Hooks</b><small>{hooksInstalled ? "事件监听已安装" : "尚未安装 hooks"}</small></div>
+        <div><span>01 · SOURCE</span><b>Claude Code Hooks</b><small>{hooksInstalled ? `事件监听 v${hooksState.hookVersion} 已安装` : hooksState?.needsUpgrade ? "检测到旧版 hooks，需要升级" : "尚未安装 hooks"}</small></div>
         {hooksInstalled ? <CheckCircle2 className="node-check" /> : <i className="node-empty" />}
       </div>
       <div className="relay-link"><i /><i /><i /></div>
       <div className={`relay-node ${claudeStatus.updatedAt ? "ready" : ""}`}>
         <div className="relay-node-icon"><Radio /></div>
-        <div><span>02 · RELAY</span><b>Vico 后台服务</b><small>localhost:38471</small></div>
+        <div><span>02 · RELAY</span><b>Vico 后台服务</b><small>localhost:38471 · {claudeStatus.activeSessions || 0} 个会话</small></div>
         <span className="node-live">LIVE</span>
       </div>
       <div className="relay-link"><i /><i /><i /></div>
-      <div className={`relay-node ${bleConnected ? "ready" : ""}`}>
-        <div className="relay-node-icon"><Bluetooth /></div>
-        <div><span>03 · DISPLAY</span><b>Vico Keyboard</b><small>{bleConnected ? bleStatus.name : "BLE GATT 未连接"}</small></div>
-        {bleConnected ? <CheckCircle2 className="node-check" /> : <i className="node-empty" />}
+      <div className={`relay-node ${transportConnected ? "ready" : ""}`}>
+        <div className="relay-node-icon">{usbConnected ? <Usb /> : <Bluetooth />}</div>
+        <div><span>03 · DISPLAY</span><b>Vico Keyboard</b><small>{usbConnected ? `${usbStatus.name || "Vico Keyboard"} · USB` : bleConnected ? `${bleStatus.name} · BLE GATT` : "USB / BLE 未连接"}</small></div>
+        {transportConnected ? <CheckCircle2 className="node-check" /> : <i className="node-empty" />}
       </div>
     </div>
 
@@ -92,20 +96,20 @@ export default function ClaudePage({
         <h2>连接设置</h2>
         <div className="relay-step">
           <div className={hooksInstalled ? "done" : ""}>{hooksInstalled ? <CheckCircle2 /> : "1"}</div>
-          <section><b>安装 Claude Code hooks</b><p>合并到现有 settings.json，不会覆盖环境变量或权限配置。</p></section>
+          <section><b>安装或升级 Claude Code hooks</b><p>合并到现有 settings.json，不会覆盖环境变量、权限配置或第三方 hooks。</p></section>
           <button className="secondary" disabled={installing || hooksInstalled} onClick={onInstallHooks}>
-            {installing && <RefreshCw className="spin" size={14} />}{hooksInstalled ? "已安装" : installing ? "安装中" : "安装"}
+            {installing && <RefreshCw className="spin" size={14} />}{hooksInstalled ? `已安装 v${hooksState.hookVersion}` : installing ? "安装中" : hooksState?.needsUpgrade ? "升级" : "安装"}
           </button>
         </div>
         <div className="relay-step">
-          <div className={bleConnected ? "done" : ""}>{bleConnected ? <CheckCircle2 /> : "2"}</div>
-          <section><b>连接 Vico 蓝牙键盘</b><p>选择 Vico Keyboard，并连接自定义 GATT 状态服务。</p></section>
-          <button className="secondary" disabled={connecting} onClick={bleConnected ? onDisconnect : onConnect}>
-            {connecting ? <RefreshCw className="spin" size={14} /> : bleConnected ? <Unplug size={14}/> : null}{bleConnected ? "断开" : connecting ? "连接中" : "选择设备"}
+          <div className={transportConnected ? "done" : ""}>{transportConnected ? <CheckCircle2 /> : "2"}</div>
+          <section><b>连接 Vico Keyboard</b><p>USB 配置通道可直接转发；蓝牙模式使用自定义 GATT 服务。</p></section>
+          <button className="secondary" disabled={connecting || usbConnected} onClick={bleConnected ? onDisconnect : onConnect}>
+            {connecting ? <RefreshCw className="spin" size={14} /> : bleConnected ? <Unplug size={14}/> : usbConnected ? <Usb size={14}/> : null}{usbConnected ? "USB 已连接" : bleConnected ? "断开" : connecting ? "连接中" : "选择蓝牙"}
           </button>
         </div>
         <div className="relay-actions">
-          <button className="primary" disabled={!bleConnected} onClick={onSendTest}><Radio size={15} />发送测试状态</button>
+          <button className="primary" disabled={!transportConnected} onClick={onSendTest}><Radio size={15} />发送测试状态</button>
           <p>关闭主窗口后应用会留在系统托盘，继续转发事件。</p>
         </div>
       </div>

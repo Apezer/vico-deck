@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BatteryMedium, Bluetooth, ChevronDown, CircleHelp, Command, Cpu, Download,
-  Eraser, Gauge, Keyboard, Layers3, Monitor, Moon, MoreHorizontal, Pencil,
+  Eraser, Gauge, Keyboard, Layers3, Monitor, Moon, MoreHorizontal, Palette, Pencil,
   Play, Plus, Power, RefreshCw, Rocket, Save, Settings, SlidersHorizontal,
   Sparkles, Sun, Trash2, Unplug, Upload, Usb, Volume2, WifiOff, X
 } from "lucide-react";
@@ -9,6 +9,7 @@ import { VicoBleDevice, VicoDevice } from "./device";
 import ClaudePage from "./ClaudePage";
 import LiveOledCanvas from "./LiveOledCanvas";
 import OledPixelCanvas from "./OledPixelCanvas";
+import { OLED_CONTENT_OPTIONS, renderRuntimePreview } from "./oled-runtime-preview";
 import {
   bitmapFromBase64,
   bitmapToBase64,
@@ -17,11 +18,14 @@ import {
   invertBitmap
 } from "./oled-bitmap";
 import { profileCrc } from "./profile-protocol";
+import { buildRgbSettingsPacket, buildRuntimeBitmapPackets, buildRuntimeSettingsPacket, buildRuntimeStatusPackets } from "./runtime-protocol";
 import defaultProfiles from "../shared/default-profiles.json";
 
 const fallbackConfig = {
   schemaVersion: 2,
   startAtLogin: false, minimizeToTray: true, closeToTray: true,
+  oledRuntime: { page:"brand", autoClaude:true },
+  rgb: { effect:0, brightness:50, speed:100, enabled:true, color:"#D6FF38" },
   activeProfile: "preset-1",
   profiles: structuredClone(defaultProfiles)
 };
@@ -61,6 +65,35 @@ const physicalKeySlots = [
   { key:4, area:"enter" }
 ];
 
+const RGB_EFFECTS = [
+  { id:6, name:"常亮", description:"保持你选择的固定颜色", className:"static" },
+  { id:0, name:"彩虹流光", description:"连续变化的全色相渐变", className:"rainbow" },
+  { id:1, name:"呼吸", description:"柔和明暗循环", className:"breathing" },
+  { id:2, name:"彗星", description:"单点移动并保留拖尾", className:"comet" },
+  { id:3, name:"逐键点亮", description:"灯光依次扫过每个按键", className:"wipe" },
+  { id:4, name:"火焰", description:"暖色随机闪烁", className:"fire" },
+  { id:5, name:"纯色渐变", description:"整块灯光缓慢变色", className:"solid" },
+  { id:7, name:"七彩呼吸", description:"每完成一次呼吸后切换一种颜色", className:"rainbow-breathing" }
+];
+
+function colorHueOffset(hexColor) {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hexColor || "");
+  if (!match) return 0;
+  const value = Number.parseInt(match[1], 16);
+  const r = ((value >> 16) & 255) / 255;
+  const g = ((value >> 8) & 255) / 255;
+  const b = (value & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  if (delta === 0) return -76;
+  let hue = max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+  hue = Math.round(hue * 60);
+  if (hue < 0) hue += 360;
+  // 预览图中的基准灯光为约 76° 的黄绿色。
+  return hue - 76;
+}
+
 function Toggle({ value, onChange, disabled }) {
   return <button disabled={disabled} className={`toggle ${value ? "on" : ""}`} onClick={() => onChange(!value)}><span /></button>;
 }
@@ -71,15 +104,15 @@ function Brand() {
 
 function Sidebar({ page, setPage }) {
   const items = [
-    ["keys", Keyboard, "按键配置"], ["oled", Monitor, "OLED 显示"], ["profiles", Layers3, "配置文件"], ["claude", Cpu, "Claude Code"], ["settings", Settings, "设置"]
+    ["keys", Keyboard, "按键配置"], ["oled", Monitor, "OLED 显示"], ["rgb", Palette, "RGB 灯光"], ["profiles", Layers3, "配置文件"], ["claude", Cpu, "Claude Code"], ["settings", Settings, "设置"]
   ];
   return <aside className="sidebar">
     <Brand />
     <nav>
       <p>设备</p>
-      {items.slice(0, 3).map(([id, Icon, label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}><Icon size={18}/><span>{label}</span></button>)}
+      {items.slice(0, 4).map(([id, Icon, label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}><Icon size={18}/><span>{label}</span></button>)}
       <p>应用</p>
-      {items.slice(3).map(([id, Icon, label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}><Icon size={18}/><span>{label}</span></button>)}
+      {items.slice(4).map(([id, Icon, label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}><Icon size={18}/><span>{label}</span></button>)}
     </nav>
     <div className="sidebar-help"><CircleHelp size={17}/><div><b>需要帮助？</b><span>查看连接与固件指南</span></div></div>
   </aside>;
@@ -88,10 +121,11 @@ function Sidebar({ page, setPage }) {
 function Header({ status, connect, disconnect, syncing, sync }) {
   const connected = status.state === "connected";
   const connecting = status.state === "connecting";
+  const battery = Number.isFinite(status.batteryPercent) ? `${status.batteryPercent}%` : null;
   return <header className="topbar">
     <div className="crumb"><span>Vico Keyboard</span><ChevronDown size={15}/></div>
     <div className="top-actions">
-      <div className={`device-pill ${connected ? "connected" : connecting ? "connecting" : ""}`}><span className="status-dot"/>{connected ? status.name : connecting ? "正在验证 Vico 固件" : "设备未连接"}</div>
+      <div className={`device-pill ${connected ? "connected" : connecting ? "connecting" : ""}`}><span className="status-dot"/>{connected ? `${status.name}${battery ? ` · ${battery}` : ""}` : connecting ? "正在验证 Vico 固件" : "设备未连接"}</div>
       <button className="ghost square"><MoreHorizontal size={19}/></button>
       {connected && <button className="secondary header-disconnect" onClick={disconnect}><Unplug size={15}/>断开</button>}
       <button className="connect-btn" onClick={connected ? sync : connect} disabled={syncing || connecting}>
@@ -117,7 +151,11 @@ function DeviceSelectionDialog({ request, onSelect }) {
         {bluetooth ? "这里只显示名称为 Vico Keyboard 的设备。" : "这里只显示通过 Vico 产品名和 USB VID/PID 双重验证的设备，其他键盘会被自动忽略。"}
       </p>
       <div className="device-picker-list">
-        {request.devices.length === 0 && <div className="device-picker-empty">没有发现 Vico Keyboard，请确认模式与连接状态，并重新插拔设备。</div>}
+        {request.devices.length === 0 && <div className="device-picker-empty">
+          {bluetooth
+            ? "正在扫描 Vico Keyboard…请确认模式拨片位于 BLE、键盘正在广播，并且 Windows 蓝牙已开启。"
+            : "没有发现 Vico Keyboard，请确认模式与连接状态，并重新插拔设备。"}
+        </div>}
         {request.devices.map((device) => <button key={device.id} onClick={() => onSelect(device.id)}>
           <span className="device-choice-icon">{bluetooth ? <Bluetooth/> : <Keyboard/>}</span>
           <span className="device-choice-copy">
@@ -135,6 +173,7 @@ function DeviceSelectionDialog({ request, onSelect }) {
 function DeviceHero({ status, connect }) {
   const connected = status.state === "connected";
   const connecting = status.state === "connecting";
+  const battery = Number.isFinite(status.batteryPercent) ? `${status.batteryPercent}%` : "--%";
   return <section className="device-hero">
     <div>
       <div className="eyebrow"><span className="live-dot"/> VICO 8 · ESP32-S3</div>
@@ -156,7 +195,7 @@ function DeviceHero({ status, connect }) {
         <span className="mini-key mini-aux3"/>
         <span className="mini-key mini-enter">ENTER</span>
       </div>
-      <div className="connection-tag">{connected ? <><BatteryMedium size={16}/> 86% · USB</> : <><WifiOff size={16}/> 等待连接</>}</div>
+      <div className="connection-tag">{connected ? <><BatteryMedium size={16}/> {battery} · USB</> : <><WifiOff size={16}/> 等待连接</>}</div>
     </div>
   </section>;
 }
@@ -219,19 +258,25 @@ function KeysPage({ profile, profiles, selectProfile, updateProfile, status, con
   </>;
 }
 
-function OledPage({ profile, updateProfile }) {
+function OledPage({
+  profile, updateProfile, runtime, updateRuntime, systemStatus, claudeStatus,
+  deviceConnected, deviceMode, batteryPercent, batteryMillivolts,
+  usbStatus, bleStatus, bleConnecting, onConnectBle, onDisconnectBle
+}) {
   const oled = profile.oled;
   const [tool, setTool] = useState("draw");
   const [importMessage, setImportMessage] = useState("");
+  const [previewNow, setPreviewNow] = useState(() => new Date());
   const imageInputRef = useRef(null);
   const set = (patch) => updateProfile({ ...profile, oled: { ...oled, ...patch } });
-  const setMode = (mode) => set({
-    mode,
-    ...(mode === "custom" && !oled.bitmap
-      ? { bitmap: bitmapToBase64(createBlankBitmap()) }
-      : {})
-  });
   const setBitmap = (bitmap) => set({ mode:"custom", bitmap });
+  const selectContent = (page) => {
+    if (page === "custom" && oled.mode !== "custom") {
+      set({ mode:"custom", bitmap:oled.bitmap || bitmapToBase64(createBlankBitmap()) });
+    }
+    // 自定义画布必须保持可见，不能被后台 Coding 状态临时覆盖。
+    updateRuntime({ ...runtime, page, autoClaude:page === "custom" ? false : runtime.autoClaude });
+  };
   const importImage = async (event) => {
     const [file] = event.target.files || [];
     event.target.value = "";
@@ -244,20 +289,85 @@ function OledPage({ profile, updateProfile }) {
       setImportMessage(error.message);
     }
   };
+  const selectedPage = runtime.page === "auto" ? "brand" : runtime.page;
+  const claudeOverrides = selectedPage !== "custom" && runtime.autoClaude && (
+    ["ready", "working", "tool", "waiting", "error"].includes(claudeStatus?.state) ||
+    (claudeStatus?.state === "done" && Date.now() - Number(claudeStatus.updatedAt || 0) < 5000)
+  );
+  const previewPage = claudeOverrides ? "claude" : selectedPage;
+  useEffect(() => {
+    if (previewPage !== "claude") return undefined;
+    const timer = setInterval(() => setPreviewNow(new Date()), 180);
+    return () => clearInterval(timer);
+  }, [previewPage]);
+  const runtimePreviewBitmap = useMemo(() => renderRuntimePreview({
+    page:previewPage,
+    systemStatus,
+    claudeStatus,
+    profileSlot:profile.slot,
+    connected:deviceConnected,
+    connectionMode:deviceMode,
+    batteryPercent,
+    batteryMillivolts,
+    now:previewNow
+  }), [previewPage, systemStatus, claudeStatus, profile.slot, deviceConnected, deviceMode, batteryPercent, batteryMillivolts, previewNow]);
+  const metricValue = (value) => Number.isFinite(value) ? `${Math.round(value)}%` : "--";
+  const usbConnected = usbStatus?.state === "connected";
+  const bleConnected = bleStatus?.state === "connected";
+  const gattStatusText = usbConnected
+    ? "USB 配置通道已连接"
+    : bleConnected
+      ? `蓝牙 GATT 已连接${Number.isFinite(bleStatus?.batteryPercent) ? ` · ${bleStatus.batteryPercent}%` : ""}`
+      : bleConnecting
+        ? "正在查找 Vico Keyboard…"
+        : "蓝牙 GATT 未连接";
 
   return <section className="page-pad">
-    <div className="page-heading"><div className="icon-box"><Monitor/></div><div><span>OLED STUDIO</span><h1>设计你的显示界面</h1><p>预览会实时呈现最终的 128 × 64 单色画面。</p></div></div>
+    <div className="page-heading oled-page-heading">
+      <div className="icon-box"><Monitor/></div>
+      <div><span>OLED STUDIO</span><h1>设计你的显示界面</h1><p>预览会实时呈现最终的 128 × 64 单色画面。</p></div>
+      <div className={`oled-gatt-control ${deviceConnected ? "online" : ""}`}>
+        <div className="oled-gatt-state">
+          <i/>
+          <div><b>{gattStatusText}</b><small>{usbConnected ? "OLED 修改将通过 USB 同步" : "用于同步 OLED 页面和状态信息"}</small></div>
+        </div>
+        <button
+          className="secondary"
+          disabled={bleConnecting || usbConnected}
+          onClick={bleConnected ? onDisconnectBle : onConnectBle}
+        >
+          {bleConnecting ? <RefreshCw className="spin" size={14}/> : usbConnected ? <Usb size={14}/> : bleConnected ? <Unplug size={14}/> : <Bluetooth size={14}/>}
+          {usbConnected ? "USB 已连接" : bleConnected ? "断开 GATT" : bleConnecting ? "连接中…" : "连接蓝牙 GATT"}
+        </button>
+      </div>
+    </div>
+    {!deviceConnected && <div className="oled-connection-notice"><Bluetooth size={16}/><div><b>当前仅显示本地预览</b><span>Windows 已配对键盘并不代表配置用 GATT 已连接。点击上方“连接蓝牙 GATT”，连接后当前 OLED 页面会自动同步到键盘。</span></div></div>}
     <div className="oled-grid">
       <div className="oled-preview-card">
-        <div className="card-label"><span>逐像素实时预览</span><span>128 × 64 · 1-BIT</span></div>
-        <OledPixelCanvas oled={oled} tool={tool} onBitmapChange={setBitmap}/>
-        <p>{oled.mode === "custom" ? "拖动鼠标绘制；每个小方块对应 OLED 的一个真实像素" : "模板也会先栅格化为真实的 128 × 64 像素"}</p>
+        <div className="card-label"><span>设备实时预览</span><span>128 × 64 · 1-BIT</span></div>
+        <OledPixelCanvas oled={selectedPage === "custom" ? { ...oled, mode:"custom" } : oled} tool={tool} onBitmapChange={setBitmap} previewBitmap={selectedPage === "custom" ? null : runtimePreviewBitmap}/>
+        <p>{selectedPage === "custom" ? "拖动鼠标绘制；每个小方块对应 OLED 上的一个真实像素。" : claudeOverrides ? "Coding 自动覆盖正在生效；结束后会返回所选页面。" : "预览和键盘固件使用相同的像素坐标；性能数据约每秒更新一次。"}</p>
       </div>
       <div className="settings-card">
         <h2>显示内容</h2>
-        <label>布局样式</label>
-        <div className="mode-tabs four">{[["dashboard","品牌"],["minimal","极简"],["stats","统计"],["custom","像素画"]].map(([id,label]) => <button className={oled.mode === id ? "active" : ""} onClick={() => setMode(id)} key={id}>{label}</button>)}</div>
-        {oled.mode === "custom" ? <div className="pixel-tools">
+        <label htmlFor="oled-content-select">OLED 显示内容</label>
+        <div className="oled-select-wrap">
+          <select id="oled-content-select" value={selectedPage} onChange={(event) => selectContent(event.target.value)}>
+            {OLED_CONTENT_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+          <ChevronDown size={15}/>
+        </div>
+
+        {selectedPage === "system" && <div className="performance-live">
+          <div className="performance-live-head"><span className="live-dot"/>电脑性能实时数据</div>
+          {[["CPU", systemStatus.cpu],["GPU", systemStatus.gpu],["内存", systemStatus.memory]].map(([label, value]) => <div className="performance-metric" key={label}>
+            <div><span>{label}</span><b>{metricValue(value)}</b></div>
+            <i><span style={{ width:Number.isFinite(value) ? `${Math.max(0, Math.min(100, value))}%` : "0%" }}/></i>
+          </div>)}
+          <small>{systemStatus.online === false ? "电脑监控服务离线" : "由 VicoDeck 后台服务持续采集"}</small>
+        </div>}
+
+        {selectedPage === "custom" && <div className="pixel-tools custom-pixel-tools">
           <div className="pixel-tool-row">
             <button className={tool === "draw" ? "active" : ""} onClick={() => setTool("draw")}><Pencil size={14}/>画笔</button>
             <button className={tool === "erase" ? "active" : ""} onClick={() => setTool("erase")}><Eraser size={14}/>橡皮</button>
@@ -268,20 +378,86 @@ function OledPage({ profile, updateProfile }) {
             <button className="danger-subtle" onClick={() => setBitmap(bitmapToBase64(createBlankBitmap()))}><Trash2 size={14}/>清空</button>
           </div>
           <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/bmp" hidden onChange={importImage}/>
-          <p className="pixel-help">图片会等比缩放到 128 × 64，并转换为黑白 1-bit 数据。推荐使用高对比度 PNG。</p>
+          <p className="pixel-help">图片会等比缩放到 128 × 64，并转换成黑白 1-bit 数据。松开画笔或导入图片后自动同步。</p>
           {importMessage && <p className="pixel-import-message">{importMessage}</p>}
-        </div> : oled.mode === "minimal" ? <div className="firmware-layout-note">
-          <b>固件默认界面</b>
-          <p>预览当前固件的标题栏、连接模式、2 × 4 按键状态和 GPIO 映射。实际设备会根据按键与 USB/BLE 状态动态刷新。</p>
-        </div> : <>
-          <label>主标题</label><input maxLength={16} value={oled.title} onChange={(e) => set({ title:e.target.value.toUpperCase() })}/>
-          <label>副标题</label><input maxLength={24} value={oled.subtitle} onChange={(e) => set({ subtitle:e.target.value.toUpperCase() })}/>
-        </>}
+        </div>}
+
+        <div className="setting-row compact"><div><b>Coding 自动覆盖</b><span>{selectedPage === "custom" ? "自定义像素画显示期间保持关闭" : "Claude Code 工作、等待或出错时自动切换到 Coding"}</span></div><Toggle disabled={selectedPage === "custom"} value={runtime.autoClaude} onChange={(value) => updateRuntime({ ...runtime, autoClaude:value })}/></div>
+        <div className="runtime-help">选择后会立即通过 USB 或蓝牙同步到键盘；键盘端也可使用 Fn + KEY6 / KEY7 切换。</div>
         <div className="range-label"><label>屏幕亮度</label><b>{oled.brightness}%</b></div><input className="range" type="range" min="10" max="100" value={oled.brightness} onChange={(e) => set({ brightness:Number(e.target.value) })}/>
-        {oled.mode !== "custom" && oled.mode !== "minimal" && <>
-          <div className="setting-row compact"><div><b>显示连接状态</b><span>USB / 蓝牙状态图标</span></div><Toggle value={oled.showConnection} onChange={(v) => set({ showConnection:v })}/></div>
-          <div className="setting-row compact"><div><b>显示电量</b><span>无线模式下显示剩余电量</span></div><Toggle value={oled.showBattery} onChange={(v) => set({ showBattery:v })}/></div>
-        </>}
+      </div>
+    </div>
+  </section>;
+}
+
+function RgbPage({ settings, updateSettings, usbStatus, bleStatus, bleConnecting, onConnectBle, onDisconnectBle }) {
+  const usbConnected = usbStatus?.state === "connected";
+  const bleConnected = bleStatus?.state === "connected";
+  const connected = usbConnected || bleConnected;
+  const effect = RGB_EFFECTS.find((item) => item.id === settings.effect) || RGB_EFFECTS[0];
+  const previewStyle = {
+    "--rgb-brightness":settings.enabled ? Math.max(.25, settings.brightness / 100) : 0,
+    "--rgb-speed":`${Math.max(.35, 2.6 * 100 / settings.speed)}s`,
+    "--rgb-fire-speed":`${Math.max(.12, .9 * 100 / settings.speed)}s`,
+    "--rgb-solid-speed":`${Math.max(1.5, 6.2 * 100 / settings.speed)}s`,
+    "--rgb-rainbow-breathe-speed":`${Math.max(2.1, 15.6 * 100 / settings.speed)}s`,
+    "--rgb-custom-hue":`${colorHueOffset(settings.color)}deg`
+  };
+  const set = (patch) => updateSettings({ ...settings, ...patch });
+
+  return <section className="page-pad rgb-page">
+    <div className="page-heading rgb-page-heading">
+      <div className="icon-box"><Palette/></div>
+      <div><span>RGB LIGHTING</span><h1>设计你的键盘灯光</h1><p>灯效参数通过 USB 或蓝牙 GATT 实时同步，并保存在键盘中。</p></div>
+      <div className={`rgb-connection ${connected ? "online" : ""}`}>
+        <i/><b>{usbConnected ? "USB 已连接" : bleConnected ? "蓝牙 GATT 已连接" : "设备未连接"}</b>
+        {!usbConnected && <button className="secondary" disabled={bleConnecting} onClick={bleConnected ? onDisconnectBle : onConnectBle}>
+          {bleConnecting ? <RefreshCw className="spin" size={14}/> : bleConnected ? <Unplug size={14}/> : <Bluetooth size={14}/>}
+          {bleConnecting ? "连接中…" : bleConnected ? "断开" : "连接蓝牙"}
+        </button>}
+      </div>
+    </div>
+
+    {!connected && <div className="oled-connection-notice"><Palette size={16}/><div><b>当前为本地灯效预览</b><span>连接 USB 配置通道或蓝牙 GATT 后，模式、亮度、速度和常亮颜色会自动同步到键盘。</span></div></div>}
+
+    <div className="rgb-layout">
+      <div className="rgb-preview-card">
+        <div className="card-label"><span>灯光实时预览</span><span>8 × WS2812B · GPIO8</span></div>
+        <div className={`rgb-product-preview effect-${effect.className} ${settings.enabled ? "enabled" : "disabled"}`} style={previewStyle}>
+          <img src="/rgb-keyboard-layout.png" alt="Vico Keyboard RGB 灯光布局：OLED、八个按键与无灯光旋钮"/>
+        </div>
+        <div className="rgb-preview-meta"><div><span>当前灯效</span><b>{effect.name}</b></div><div><span>亮度</span><b>{settings.enabled ? `${settings.brightness}%` : "OFF"}</b></div><div><span>速度</span><b>{settings.effect === 6 ? "—" : `${settings.speed}%`}</b></div></div>
+      </div>
+
+      <div className="rgb-settings-card">
+        <div className="rgb-master-row"><div><b>RGB 灯光</b><span>关闭后键盘会立即熄灭并记住设置</span></div><Toggle value={settings.enabled} onChange={(enabled) => set({ enabled })}/></div>
+        <h2>灯光模式</h2>
+        <div className="rgb-mode-select">
+          <select aria-label="选择灯光模式" value={settings.effect} onChange={(event) => set({ effect:Number(event.target.value) })}>
+            {RGB_EFFECTS.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
+          </select>
+          <ChevronDown size={15}/>
+        </div>
+        <p className="rgb-mode-description">{effect.description}</p>
+        {(settings.effect === 1 || settings.effect === 6) && <div className="rgb-color-control">
+          <div><label htmlFor="rgb-static-color">{settings.effect === 1 ? "呼吸颜色" : "常亮颜色"}</label><b>{settings.color?.toUpperCase?.() || "#D6FF38"}</b></div>
+          <label className="rgb-color-picker" htmlFor="rgb-static-color">
+            <input id="rgb-static-color" type="color" value={settings.color || "#D6FF38"} onChange={(event) => set({ color:event.target.value.toUpperCase() })}/>
+            <span style={{ background:settings.color || "#D6FF38" }}/><em>选择颜色</em>
+          </label>
+          <small>{settings.effect === 1 ? "键盘会使用这个颜色完成连续的明暗呼吸。" : "键盘会持续保持这个颜色，直到你修改模式或关闭灯光。"}</small>
+        </div>}
+        <div className={`rgb-range-control ${settings.effect === 6 ? "disabled" : ""}`}>
+          <div><label htmlFor="rgb-brightness">亮度</label><b>{settings.brightness}%</b></div>
+          <input id="rgb-brightness" className="range" type="range" min="25" max="100" step="1" value={settings.brightness} onChange={(event) => set({ brightness:Number(event.target.value) })}/>
+          <small>较低亮度可以明显延长电池续航。</small>
+        </div>
+        <div className="rgb-range-control">
+          <div><label htmlFor="rgb-speed">动画速度</label><b>{settings.speed}%</b></div>
+          <input disabled={settings.effect === 6} id="rgb-speed" className="range" type="range" min="50" max="200" step="5" value={settings.speed} onChange={(event) => set({ speed:Number(event.target.value) })}/>
+          <small>{settings.effect === 6 ? "常亮模式不需要动画速度。" : "100% 为标准速度；仅影响动态灯效。"}</small>
+        </div>
+        <div className={`rgb-sync-state ${connected ? "online" : ""}`}><i/><span>{connected ? `修改会立即通过 ${usbConnected ? "USB" : "蓝牙 GATT"} 保存到键盘` : "等待连接，设置已保存在软件中"}</span></div>
       </div>
     </div>
   </section>;
@@ -337,6 +513,7 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [version, setVersion] = useState("0.1.0");
   const [claudeStatus, setClaudeStatus] = useState({ state:"offline", tool:"", text:"Waiting for Claude Code", event:"None", updatedAt:0 });
+  const [systemStatus, setSystemStatus] = useState({ cpu:0, gpu:null, memory:0, temperature:null, online:true, updatedAt:0 });
   const [bleStatus, setBleStatus] = useState({ state:"disconnected" });
   const [hooksState, setHooksState] = useState(null);
   const [activity, setActivity] = useState([]);
@@ -346,49 +523,98 @@ export default function App() {
   const [liveOledFrame, setLiveOledFrame] = useState(null);
   const deviceRef = useRef(null);
   const bleDeviceRef = useRef(null);
-  const latestClaudeStatus = useRef(claudeStatus);
   const saveTimer = useRef(null);
+  const rgbSyncTimer = useRef(null);
   const lastDeviceProfile = useRef(null);
+  const activeOledBitmap = config?.profiles
+    ?.find((item) => item.id === config.activeProfile)
+    ?.oled?.bitmap;
 
   useEffect(() => {
-    deviceRef.current = new VicoDevice(setStatus, setLiveOledFrame);
+    const receiveRuntimeSettings = (oledRuntime) => {
+      setConfig((current) => {
+        if (!current || (current.oledRuntime?.page === oledRuntime.page &&
+            current.oledRuntime?.autoClaude === oledRuntime.autoClaude)) return current;
+        return { ...current, oledRuntime };
+      });
+    };
+    deviceRef.current = new VicoDevice(setStatus, setLiveOledFrame, receiveRuntimeSettings);
     deviceRef.current.restore().catch(() => {});
-    bleDeviceRef.current = new VicoBleDevice(setBleStatus, () => {});
+    bleDeviceRef.current = new VicoBleDevice(setBleStatus, () => {}, receiveRuntimeSettings);
     bleDeviceRef.current.restore().catch(() => {});
     Promise.all([
       window.vico?.getConfig?.() || fallbackConfig,
       window.vico?.getAutostart?.() ?? false,
       window.vico?.getVersion?.() || "0.1.0",
       window.vico?.getClaudeStatus?.(),
-      window.vico?.getClaudeHooksState?.()
-    ]).then(([saved, autostart, appVersion, initialClaudeStatus, initialHooksState]) => {
-      setConfig({ ...fallbackConfig, ...saved, startAtLogin:autostart });
+      window.vico?.getClaudeHooksState?.(),
+      window.vico?.getSystemStatus?.()
+    ]).then(([saved, autostart, appVersion, initialClaudeStatus, initialHooksState, initialSystemStatus]) => {
+      const savedRuntime = saved?.oledRuntime || fallbackConfig.oledRuntime;
+      setConfig({
+        ...fallbackConfig,
+        ...saved,
+        oledRuntime:{ ...savedRuntime, page:savedRuntime.page === "auto" ? "brand" : savedRuntime.page },
+        rgb:{ ...fallbackConfig.rgb, ...(saved?.rgb || {}) },
+        startAtLogin:autostart
+      });
       setVersion(appVersion);
       if (initialClaudeStatus) {
-        latestClaudeStatus.current = initialClaudeStatus;
         setClaudeStatus(initialClaudeStatus);
       }
       setHooksState(initialHooksState || null);
+      if (initialSystemStatus) setSystemStatus(initialSystemStatus);
     });
 
     const removeClaudeListener = window.vico?.onClaudeStatus?.((nextStatus) => {
-      latestClaudeStatus.current = nextStatus;
       setClaudeStatus(nextStatus);
-      setActivity((items) => [nextStatus, ...items].slice(0, 10));
-      bleDeviceRef.current?.writeClaudeStatus(nextStatus).catch(() => {});
+      setActivity((items) => [nextStatus.observed || nextStatus, ...items].slice(0, 10));
     });
+    const removeSystemListener = window.vico?.onSystemStatus?.(setSystemStatus);
     const removeDeviceSelectionListener = window.vico?.onDeviceSelection?.(setDeviceSelection);
     return () => {
       removeClaudeListener?.();
+      removeSystemListener?.();
       removeDeviceSelectionListener?.();
     };
   }, []);
 
   useEffect(() => {
-    if (bleStatus.state === "connected") {
-      bleDeviceRef.current?.writeClaudeStatus(latestClaudeStatus.current).catch(() => {});
-    }
-  }, [bleStatus.state]);
+    if (!config) return;
+    const packets = buildRuntimeStatusPackets(claudeStatus, systemStatus);
+    deviceRef.current?.writeRuntimePackets(packets).catch(() => {});
+    bleDeviceRef.current?.writeRuntimePackets(packets).catch(() => {});
+  }, [config, claudeStatus, systemStatus, status.state, bleStatus.state]);
+
+  useEffect(() => {
+    bleDeviceRef.current?.writeClaudeStatus(claudeStatus).catch(() => {});
+  }, [claudeStatus, bleStatus.state]);
+
+  useEffect(() => {
+    if (!config?.oledRuntime) return;
+    const packet = buildRuntimeSettingsPacket(config.oledRuntime);
+    deviceRef.current?.writeRuntimePacket(packet).catch(() => {});
+    bleDeviceRef.current?.writeRuntimePacket(packet).catch(() => {});
+  }, [config?.oledRuntime, status.state, bleStatus.state]);
+
+  useEffect(() => {
+    if (config?.oledRuntime?.page !== "custom") return;
+    const packets = buildRuntimeBitmapPackets(bitmapFromBase64(activeOledBitmap));
+    deviceRef.current?.writeRuntimePackets(packets).catch(() => {});
+    bleDeviceRef.current?.writeRuntimePackets(packets).catch(() => {});
+  }, [config?.oledRuntime?.page, activeOledBitmap, status.state, bleStatus.state]);
+
+  useEffect(() => {
+    if (!config?.rgb) return;
+    clearTimeout(rgbSyncTimer.current);
+    // 滑块拖动时只发送最后一个值，避免大量过期设置堆积在 BLE 写入队列中。
+    rgbSyncTimer.current = setTimeout(() => {
+      const packet = buildRgbSettingsPacket(config.rgb);
+      deviceRef.current?.writeRuntimePacket(packet).catch(() => {});
+      bleDeviceRef.current?.writeRuntimePacket(packet).catch(() => {});
+    }, 80);
+    return () => clearTimeout(rgbSyncTimer.current);
+  }, [config?.rgb, status.state, bleStatus.state]);
 
   useEffect(() => {
     if (!config) return;
@@ -420,7 +646,10 @@ export default function App() {
   const profile = useMemo(() => config?.profiles.find((p) => p.id === config.activeProfile) || config?.profiles[0], [config]);
   if (!config || !profile) return <div className="loading"><div className="brand-mark"><span>V</span></div><p>正在准备你的工作台…</p></div>;
 
-  const updateProfile = (next) => setConfig({ ...config, profiles:config.profiles.map((p) => p.id === next.id ? next : p) });
+  const updateProfile = (next) => setConfig((current) => ({
+    ...current,
+    profiles:current.profiles.map((item) => item.id === next.id ? next : item)
+  }));
   const selectProfile = async (profileId) => {
     const target = config.profiles.find((item) => item.id === profileId);
     if (!target) return;
@@ -471,7 +700,6 @@ export default function App() {
     setBleConnecting(true);
     try {
       await bleDeviceRef.current.request();
-      await bleDeviceRef.current.writeClaudeStatus(latestClaudeStatus.current);
       setToast("Vico 蓝牙状态通道已连接");
     } catch (error) {
       if (error.name !== "NotFoundError") setToast(error.message);
@@ -498,7 +726,15 @@ export default function App() {
   };
   const sendTestStatus = async () => {
     const testStatus = { state:"tool", tool:"Vico Test", text:"Status relay is working", event:"ManualTest", updatedAt:Date.now() };
-    try { await bleDeviceRef.current.writeClaudeStatus(testStatus); setToast("测试状态已发送到 OLED"); }
+    try {
+      const packets = buildRuntimeStatusPackets(testStatus, systemStatus);
+      const [usbSent, bleSent] = await Promise.all([
+        deviceRef.current.writeRuntimePackets(packets),
+        bleDeviceRef.current.writeRuntimePackets(packets)
+      ]);
+      if (!usbSent && !bleSent) throw new Error("请先通过 USB 或蓝牙连接 Vico Keyboard");
+      setToast("测试状态已发送到 OLED");
+    }
     catch (error) { setToast(error.message); }
   };
 
@@ -508,9 +744,36 @@ export default function App() {
       <Header status={status} connect={connect} disconnect={disconnect} syncing={syncing} sync={sync}/>
       <div className="scroll-area">
         {page === "keys" && <KeysPage profile={profile} profiles={config.profiles} selectProfile={selectProfile} updateProfile={updateProfile} status={status} connect={connect} liveOledFrame={liveOledFrame}/>}
-        {page === "oled" && <OledPage profile={profile} updateProfile={updateProfile}/>}
+        {page === "oled" && (
+          <OledPage
+            profile={profile}
+            updateProfile={updateProfile}
+            runtime={config.oledRuntime}
+            updateRuntime={(oledRuntime) => setConfig((current) => ({ ...current, oledRuntime }))}
+            systemStatus={systemStatus}
+            claudeStatus={claudeStatus}
+            deviceConnected={status.state === "connected" || bleStatus.state === "connected"}
+            deviceMode={status.state === "connected" ? "USB" : bleStatus.state === "connected" ? "BLE" : "ADV"}
+            batteryPercent={status.state === "connected" ? status.batteryPercent : bleStatus.batteryPercent}
+            batteryMillivolts={status.state === "connected" ? status.batteryMillivolts : null}
+            usbStatus={status}
+            bleStatus={bleStatus}
+            bleConnecting={bleConnecting}
+            onConnectBle={connectBle}
+            onDisconnectBle={disconnectBle}
+          />
+        )}
+        {page === "rgb" && <RgbPage
+          settings={config.rgb}
+          updateSettings={(rgb) => setConfig((current) => ({ ...current, rgb }))}
+          usbStatus={status}
+          bleStatus={bleStatus}
+          bleConnecting={bleConnecting}
+          onConnectBle={connectBle}
+          onDisconnectBle={disconnectBle}
+        />}
         {page === "profiles" && <ProfilesPage config={config} status={status} syncing={syncing} onSelectProfile={selectProfile} onSyncCurrent={sync} onSyncAll={syncAll}/>}
-        {page === "claude" && <ClaudePage claudeStatus={claudeStatus} bleStatus={bleStatus} hooksState={hooksState} activity={activity} connecting={bleConnecting} installing={hooksInstalling} onConnect={connectBle} onDisconnect={disconnectBle} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
+        {page === "claude" && <ClaudePage claudeStatus={claudeStatus} usbStatus={status} bleStatus={bleStatus} hooksState={hooksState} activity={activity} connecting={bleConnecting} installing={hooksInstalling} onConnect={connectBle} onDisconnect={disconnectBle} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
         {page === "settings" && <SettingsPage config={config} setConfig={setConfig} version={version}/>}
       </div>
     </main>

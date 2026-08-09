@@ -22,5 +22,11 @@ contextBridge.exposeInMainWorld("vico", {
     ipcRenderer.on("claude:status", listener);
     return () => ipcRenderer.removeListener("claude:status", listener);
   },
+  getSystemStatus: () => ipcRenderer.invoke("system:status:get"),
+  onSystemStatus: (callback) => {
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on("system:status", listener);
+    return () => ipcRenderer.removeListener("system:status", listener);
+  },
   openExternal: (url) => ipcRenderer.invoke("external:open", url)
 });

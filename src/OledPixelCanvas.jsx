@@ -35,17 +35,21 @@ function drawLine(bytes, from, to, enabled) {
   }
 }
 
-export default function OledPixelCanvas({ oled, tool, onBitmapChange }) {
+export default function OledPixelCanvas({ oled, tool, onBitmapChange, previewBitmap = null }) {
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
   const bytesRef = useRef(null);
   const lastPixelRef = useRef(null);
   const bytes = useMemo(
-    () => oled.mode === "custom" ? bitmapFromBase64(oled.bitmap) : renderOledTemplate(oled),
-    [oled]
+    () => previewBitmap || (oled.mode === "custom" ? bitmapFromBase64(oled.bitmap) : renderOledTemplate(oled)),
+    [oled, previewBitmap]
   );
+  const editable = previewBitmap === null && oled.mode === "custom";
 
   useEffect(() => {
+    // 绘制过程中父组件仍可能因性能数据或设备事件重新渲染。
+    // 此时保留正在编辑的草稿，避免外部帧覆盖尚未提交的笔画。
+    if (drawingRef.current) return;
     bytesRef.current = Uint8Array.from(bytes);
     drawPixelFrame(canvasRef.current, bytesRef.current, oled.brightness);
   }, [bytes, oled.brightness]);
@@ -59,31 +63,32 @@ export default function OledPixelCanvas({ oled, tool, onBitmapChange }) {
   };
 
   const paint = (event) => {
-    if (!drawingRef.current || oled.mode !== "custom") return;
+    if (!drawingRef.current || !editable) return;
     const next = locate(event);
     drawLine(bytesRef.current, lastPixelRef.current || next, next, tool !== "erase");
     lastPixelRef.current = next;
     drawPixelFrame(canvasRef.current, bytesRef.current, oled.brightness);
   };
 
-  const finish = (event) => {
+  const finish = (event, cancelled = false) => {
     if (!drawingRef.current) return;
-    paint(event);
+    if (!cancelled) paint(event);
     drawingRef.current = false;
     lastPixelRef.current = null;
     canvasRef.current.releasePointerCapture?.(event.pointerId);
-    onBitmapChange(bitmapToBase64(bytesRef.current));
+    // 提交独立副本，避免下一次绘制修改同一缓冲区时污染已保存数据。
+    onBitmapChange?.(bitmapToBase64(Uint8Array.from(bytesRef.current)));
   };
 
   return <div className="oled-device">
     <div className="oled-pixel-screen" style={{ "--oled-brightness": oled.brightness / 100 }}>
       <canvas
         ref={canvasRef}
-        className={`oled-pixel-canvas ${oled.mode === "custom" ? "editable" : ""}`}
+        className={`oled-pixel-canvas ${editable ? "editable" : ""}`}
         width={OLED_WIDTH * OLED_PIXEL_SCALE}
         height={OLED_HEIGHT * OLED_PIXEL_SCALE}
         onPointerDown={(event) => {
-          if (oled.mode !== "custom") return;
+          if (!editable) return;
           drawingRef.current = true;
           lastPixelRef.current = locate(event);
           canvasRef.current.setPointerCapture?.(event.pointerId);
@@ -91,7 +96,7 @@ export default function OledPixelCanvas({ oled, tool, onBitmapChange }) {
         }}
         onPointerMove={paint}
         onPointerUp={finish}
-        onPointerCancel={finish}
+        onPointerCancel={(event) => finish(event, true)}
       />
     </div>
   </div>;
