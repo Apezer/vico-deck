@@ -395,13 +395,15 @@ function RgbPage({ settings, updateSettings, usbStatus, bleStatus, bleConnecting
   const bleConnected = bleStatus?.state === "connected";
   const connected = usbConnected || bleConnected;
   const effect = RGB_EFFECTS.find((item) => item.id === settings.effect) || RGB_EFFECTS[0];
+  const previewDurationSeconds = Math.max(.35, 2.6 * 100 / settings.speed);
   const previewStyle = {
     "--rgb-brightness":settings.enabled ? Math.max(.25, settings.brightness / 100) : 0,
-    "--rgb-speed":`${Math.max(.35, 2.6 * 100 / settings.speed)}s`,
+    "--rgb-speed":`${previewDurationSeconds}s`,
     "--rgb-fire-speed":`${Math.max(.12, .9 * 100 / settings.speed)}s`,
     "--rgb-solid-speed":`${Math.max(1.5, 6.2 * 100 / settings.speed)}s`,
     "--rgb-rainbow-breathe-speed":`${Math.max(2.1, 15.6 * 100 / settings.speed)}s`,
-    "--rgb-custom-hue":`${colorHueOffset(settings.color)}deg`
+    "--rgb-custom-hue":`${colorHueOffset(settings.color)}deg`,
+    "--rgb-custom-color":settings.color || "#D6FF38"
   };
   const set = (patch) => updateSettings({ ...settings, ...patch });
 
@@ -425,6 +427,17 @@ function RgbPage({ settings, updateSettings, usbStatus, bleStatus, bleConnecting
         <div className="card-label"><span>灯光实时预览</span><span>8 × WS2812B · GPIO8</span></div>
         <div className={`rgb-product-preview effect-${effect.className} ${settings.enabled ? "enabled" : "disabled"}`} style={previewStyle}>
           <img src="/rgb-keyboard-layout.png" alt="Vico Keyboard RGB 灯光布局：OLED、八个按键与无灯光旋钮"/>
+          <span className="rgb-led-layer" aria-hidden="true">
+            {Array.from({ length:8 }, (_, index) => <i
+              className={`rgb-led rgb-led-key-${index + 1}`}
+              key={index}
+              style={{
+                "--led-index":index,
+                "--led-delay":`${-(previewDurationSeconds * index / 8)}s`,
+                "--fire-delay":`${-(index * .11)}s`
+              }}
+            />)}
+          </span>
         </div>
         <div className="rgb-preview-meta"><div><span>当前灯效</span><b>{effect.name}</b></div><div><span>亮度</span><b>{settings.enabled ? `${settings.brightness}%` : "OFF"}</b></div><div><span>速度</span><b>{settings.effect === 6 ? "—" : `${settings.speed}%`}</b></div></div>
       </div>

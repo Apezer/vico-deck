@@ -7,3 +7,5 @@ release/
 .env.*
 .vite/
 coverage/
+.playwright-cli/
+output/
