@@ -47,6 +47,7 @@ const PACKET_BITMAP_CHUNK = 4;
 const PACKET_BITMAP_COMMIT = 5;
 const PACKET_CLAUDE_TEXT = 6;
 const PACKET_RGB_SETTINGS = 7;
+const PACKET_BITMAP_SAVE = 8;
 const LABEL_BYTES = 16;
 const UNKNOWN_METRIC = 0xff;
 
@@ -207,5 +208,18 @@ export function buildRuntimeBitmapPackets(bitmap) {
   writeUint32(commit, 3, expectedCrc);
   commit[RUNTIME_PACKET_BYTES - 1] = checksum(commit);
   packets.push(commit);
+  return packets;
+}
+
+/**
+ * 在完整位图提交后追加持久化指令。固件仅在 CRC 与当前正式画面一致时
+ * 写入 NVS，因此该函数只用于用户明确点击“保存到键盘”的操作。
+ */
+export function buildPersistentRuntimeBitmapPackets(bitmap) {
+  const packets = buildRuntimeBitmapPackets(bitmap);
+  const save = packet(PACKET_BITMAP_SAVE);
+  writeUint32(save, 3, crc32(bitmap));
+  save[RUNTIME_PACKET_BYTES - 1] = checksum(save);
+  packets.push(save);
   return packets;
 }

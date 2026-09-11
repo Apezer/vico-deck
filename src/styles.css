@@ -264,6 +264,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .pixel-tool-row button { min-height:34px;border:1px solid #2a313a;background:#171c22;color:#9aa2ad;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:9px;cursor:pointer; }
 .pixel-tool-row button:hover,.pixel-tool-row button.active { border-color:#66742f;color:var(--accent);background:rgba(214,255,56,.05); }
 .pixel-tool-row button.danger-subtle:hover { border-color:#704244;color:#ff8989;background:rgba(255,107,107,.05); }
+.pixel-save-button { width:100%;min-height:38px;margin-top:8px;border:1px solid #66742f;border-radius:6px;background:rgba(214,255,56,.1);color:var(--accent);display:flex;align-items:center;justify-content:center;gap:7px;font-size:10px;font-weight:700;cursor:pointer; }
+.pixel-save-button:hover:not(:disabled) { background:rgba(214,255,56,.17);border-color:var(--accent); }
+.pixel-save-button:disabled { cursor:not-allowed;opacity:.42; }
 .pixel-help,.pixel-import-message { color:#626b76;font-size:8px;line-height:1.55;margin:10px 2px 0; }
 .pixel-import-message { color:#a9bd62; }
 .firmware-layout-note { margin-top:16px;padding:14px;border:1px solid #293039;background:#0d1014;border-radius:8px; }

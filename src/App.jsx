@@ -18,7 +18,7 @@ import {
   invertBitmap
 } from "./oled-bitmap";
 import { profileCrc } from "./profile-protocol";
-import { buildRgbSettingsPacket, buildRuntimeBitmapPackets, buildRuntimeSettingsPacket, buildRuntimeStatusPackets } from "./runtime-protocol";
+import { buildPersistentRuntimeBitmapPackets, buildRgbSettingsPacket, buildRuntimeBitmapPackets, buildRuntimeSettingsPacket, buildRuntimeStatusPackets } from "./runtime-protocol";
 import defaultProfiles from "../shared/default-profiles.json";
 
 const fallbackConfig = {
@@ -261,7 +261,8 @@ function KeysPage({ profile, profiles, selectProfile, updateProfile, status, con
 function OledPage({
   profile, updateProfile, runtime, updateRuntime, systemStatus, claudeStatus,
   deviceConnected, deviceMode, batteryPercent, batteryMillivolts,
-  usbStatus, bleStatus, bleConnecting, onConnectBle, onDisconnectBle
+  usbStatus, bleStatus, bleConnecting, onConnectBle, onDisconnectBle,
+  onSaveCustomBitmap, savingCustomBitmap
 }) {
   const oled = profile.oled;
   const [tool, setTool] = useState("draw");
@@ -377,8 +378,16 @@ function OledPage({
             <button onClick={() => imageInputRef.current?.click()}><Upload size={14}/>导入图片</button>
             <button className="danger-subtle" onClick={() => setBitmap(bitmapToBase64(createBlankBitmap()))}><Trash2 size={14}/>清空</button>
           </div>
+          <button
+            className="pixel-save-button"
+            disabled={!deviceConnected || savingCustomBitmap}
+            onClick={onSaveCustomBitmap}
+          >
+            {savingCustomBitmap ? <RefreshCw className="spin" size={14}/> : <Save size={14}/>}
+            {savingCustomBitmap ? "正在保存…" : "保存到键盘"}
+          </button>
           <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/bmp" hidden onChange={importImage}/>
-          <p className="pixel-help">图片会等比缩放到 128 × 64，并转换成黑白 1-bit 数据。松开画笔或导入图片后自动同步。</p>
+          <p className="pixel-help">编辑会临时同步到屏幕预览；点击“保存到键盘”后写入设备缓存，断开软件或键盘重启后仍然保留。</p>
           {importMessage && <p className="pixel-import-message">{importMessage}</p>}
         </div>}
 
@@ -531,6 +540,7 @@ export default function App() {
   const [hooksState, setHooksState] = useState(null);
   const [activity, setActivity] = useState([]);
   const [bleConnecting, setBleConnecting] = useState(false);
+  const [savingCustomBitmap, setSavingCustomBitmap] = useState(false);
   const [hooksInstalling, setHooksInstalling] = useState(false);
   const [deviceSelection, setDeviceSelection] = useState(null);
   const [liveOledFrame, setLiveOledFrame] = useState(null);
@@ -722,6 +732,23 @@ export default function App() {
     bleDeviceRef.current.disconnect();
     setToast("Vico 蓝牙状态通道已断开");
   };
+  const saveCustomBitmap = async () => {
+    setSavingCustomBitmap(true);
+    try {
+      const bitmap = bitmapFromBase64(activeOledBitmap);
+      const packets = buildPersistentRuntimeBitmapPackets(bitmap);
+      // USB 与 BLE 不重复写同一台键盘；USB 可用时优先使用其稳定配置通道。
+      const sent = status.state === "connected"
+        ? await deviceRef.current.writeRuntimePackets(packets)
+        : await bleDeviceRef.current.writeRuntimePackets(packets);
+      if (!sent) throw new Error("请先通过 USB 或蓝牙连接 Vico Keyboard");
+      setToast("自定义像素画已保存到键盘");
+    } catch (error) {
+      setToast(error.message || "自定义像素画保存失败");
+    } finally {
+      setSavingCustomBitmap(false);
+    }
+  };
   const selectDevice = async (deviceId) => {
     if (!deviceSelection) return;
     const requestId = deviceSelection.requestId;
@@ -774,6 +801,8 @@ export default function App() {
             bleConnecting={bleConnecting}
             onConnectBle={connectBle}
             onDisconnectBle={disconnectBle}
+            onSaveCustomBitmap={saveCustomBitmap}
+            savingCustomBitmap={savingCustomBitmap}
           />
         )}
         {page === "rgb" && <RgbPage
