@@ -16,6 +16,9 @@
     "test:runtime-preview": "node test/oled-runtime-preview.test.mjs",
     "test:system": "node test/system-monitor.test.cjs",
     "test:ble": "node test/ble-reconnect.test.mjs",
+    "test:voice": "node test/voice-protocol.test.mjs",
+    "test:recorder": "node test/recorder-wav.test.mjs",
+    "test:speech": "node --test test/doubao-service.test.cjs test/credential-store.test.cjs",
     "preview": "vite preview",
     "start": "electron .",
     "dist": "npm run build && electron-builder --win nsis"

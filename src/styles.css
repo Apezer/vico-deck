@@ -267,6 +267,77 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .pixel-save-button { width:100%;min-height:38px;margin-top:8px;border:1px solid #66742f;border-radius:6px;background:rgba(214,255,56,.1);color:var(--accent);display:flex;align-items:center;justify-content:center;gap:7px;font-size:10px;font-weight:700;cursor:pointer; }
 .pixel-save-button:hover:not(:disabled) { background:rgba(214,255,56,.17);border-color:var(--accent); }
 .pixel-save-button:disabled { cursor:not-allowed;opacity:.42; }
+
+/* 语音输入：所有选择器限制在 speech-page，避免影响按键与 OLED 页面。 */
+.speech-page { padding-bottom:48px; }
+.speech-grid { display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.75fr);gap:16px;align-items:start; }
+.speech-main-card,.speech-result-card,.speech-cloud-card,.speech-options-card { border:1px solid #282f38;background:#101419;border-radius:10px; }
+.speech-main-card { min-height:420px;padding:30px;display:flex;flex-direction:column;align-items:center;text-align:center; }
+.speech-orb { width:92px;height:92px;border-radius:50%;display:grid;place-items:center;color:var(--accent);border:1px solid #536126;background:radial-gradient(circle,rgba(214,255,56,.12),rgba(214,255,56,.02) 65%);box-shadow:0 0 28px rgba(214,255,56,.08); }
+.speech-orb svg { width:38px;height:38px; }
+.speech-orb.recording { color:#ff7272;border-color:#8a3e41;background:radial-gradient(circle,rgba(255,82,82,.2),rgba(255,82,82,.03) 68%);animation:speech-pulse 1.2s ease-in-out infinite; }
+.speech-orb.busy { animation:speech-pulse 1.6s ease-in-out infinite; }
+@keyframes speech-pulse { 50% { transform:scale(1.06);box-shadow:0 0 36px currentColor; } }
+.speech-main-card h2 { margin:19px 0 13px;font-size:16px;color:#e9edf2; }
+.speech-progress { width:min(420px,90%);height:5px;background:#222831;border-radius:4px;overflow:hidden; }
+.speech-progress i { display:block;height:100%;background:var(--accent);transition:width .12s linear;box-shadow:0 0 8px var(--accent); }
+.speech-shortcut-guide { width:min(440px,100%);margin-top:18px;padding:13px;border:1px solid #303842;border-radius:8px;background:#0b0e12; }
+.speech-shortcut-guide>div { display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:8px; }
+.speech-shortcut-guide kbd { min-width:34px;padding:6px 8px;border:1px solid #59652f;border-bottom-width:3px;border-radius:5px;background:#171c22;color:var(--accent);font:700 9px "Microsoft YaHei UI",sans-serif;text-align:center; }
+.speech-shortcut-guide b { color:#59636e;font-size:9px; }
+.speech-shortcut-guide span { color:#87919c;font-size:8px; }
+.speech-shortcut-guide.unavailable { border-color:#6a3a3d; }
+.speech-shortcut-guide.unavailable kbd,.speech-shortcut-guide.unavailable span { color:#ff8a8a;border-color:#6a3a3d; }
+.speech-computer-card { width:min(440px,100%);margin-top:18px;padding:15px;border:1px solid #39442f;border-radius:8px;background:linear-gradient(145deg,rgba(214,255,56,.055),#0b0e12 58%);text-align:left; }
+.speech-computer-head { display:flex;align-items:center;justify-content:space-between;margin-bottom:10px; }
+.speech-computer-head b,.speech-computer-head span { display:block; }
+.speech-computer-head b { color:#e8edf2;font-size:11px;margin-bottom:3px; }
+.speech-computer-head span { color:#74808b;font-size:8px; }
+.speech-computer-head em { padding:4px 7px;border:1px solid #4b582a;border-radius:10px;color:var(--accent);font-size:7px;font-style:normal;letter-spacing:.6px; }
+.speech-computer-card select { width:100%;height:36px;padding:0 10px;border:1px solid #303844;border-radius:5px;background:#090c10;color:#cbd2d9;font-size:9px;outline:none; }
+.speech-computer-card select:focus { border-color:#66742f; }
+.speech-start-recording,.speech-stop-recording { width:100%;min-height:39px;margin-top:9px;display:flex;align-items:center;justify-content:center;gap:7px;border-radius:5px;cursor:pointer; }
+.speech-stop-recording { border:1px solid #8a3e41;background:rgba(255,82,82,.09);color:#ff8585; }
+.speech-computer-card>small { display:block;margin-top:8px;color:#8e956f;font-size:8px;line-height:1.5;text-align:center; }
+.speech-device-line { min-height:38px;margin:18px 0 12px;display:flex;align-items:center;justify-content:center;gap:8px;color:#78828e;font-size:9px; }
+.speech-device-line button { min-height:30px;padding:0 10px;margin-left:5px;display:flex;align-items:center;gap:5px;border:1px solid #36404c;border-radius:5px;background:#171c22;color:#b4bdc8;cursor:pointer; }
+.speech-instruction { width:min(440px,100%);padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left;border:1px solid #29313a;border-radius:7px;background:#0b0e12; }
+.speech-instruction svg { color:var(--accent); }
+.speech-instruction b,.speech-instruction span { display:block; }
+.speech-instruction b { font-size:11px;color:#e8edf2;margin-bottom:4px; }
+.speech-instruction span { font-size:8px;color:#727c87; }
+.speech-recognize,.speech-import,.speech-cancel { min-height:36px;margin-top:12px;padding:0 16px;display:flex;align-items:center;gap:7px;justify-content:center; }
+.speech-import { margin-top:8px; }
+.speech-error,.speech-notice { width:min(440px,100%);margin-top:12px;padding:10px;border-radius:6px;font-size:9px;line-height:1.5; }
+.speech-error { color:#ff9292;border:1px solid #60383b;background:rgba(255,80,80,.06); }
+.speech-notice { color:#cfe97a;border:1px solid #465326;background:rgba(214,255,56,.05);display:flex;align-items:center;justify-content:center;gap:6px; }
+.speech-side { display:flex;flex-direction:column;gap:16px; }
+.speech-cloud-card,.speech-options-card { margin:0;padding:18px; }
+.speech-card-title { display:flex;gap:10px;align-items:center; }
+.speech-card-title>svg { color:var(--accent); }
+.speech-card-title span,.speech-result-head span { color:#68727e;font-size:8px;letter-spacing:1.7px; }
+.speech-card-title h2,.speech-result-head h2 { margin:3px 0 0;font-size:14px;color:#e8edf2; }
+.speech-cloud-card>p { color:#707a85;font-size:8px;line-height:1.6;margin:14px 0; }
+.speech-key-status { min-height:34px;padding:0 10px;display:flex;align-items:center;gap:6px;border:1px solid #29313a;background:#0b0e12;color:#8d97a3;font-size:9px;border-radius:6px; }
+.speech-key-status svg { width:13px;color:var(--accent); }
+.speech-key-row { display:grid;grid-template-columns:1fr auto;gap:7px;margin-top:8px; }
+.speech-key-row input { min-width:0;height:36px;padding:0 10px;border:1px solid #303844;background:#090c10;color:#dce2e8;border-radius:5px;font-size:9px; }
+.speech-key-row button { border:1px solid #66742f;background:rgba(214,255,56,.1);color:var(--accent);border-radius:5px;padding:0 13px;cursor:pointer; }
+.speech-clear-key { margin-top:9px;border:0;background:transparent;color:#7d858e;font-size:8px;display:flex;align-items:center;gap:5px;cursor:pointer; }
+.speech-options-card>h2 { font-size:12px;margin:0 0 8px;color:#e2e7ec; }
+.speech-options-card label { min-height:52px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #242a32; }
+.speech-options-card label b,.speech-options-card label span { display:block;text-align:left; }
+.speech-options-card label b { color:#cbd2d9;font-size:9px;margin-bottom:3px; }
+.speech-options-card label span { color:#69737e;font-size:8px; }
+.speech-options-card input { accent-color:var(--accent); }
+.speech-result-card { margin-top:16px;padding:20px; }
+.speech-result-head { display:flex;justify-content:space-between;align-items:end;margin-bottom:12px; }
+.speech-result-head small { color:#68727e;font-size:8px; }
+.speech-result-card textarea { width:100%;min-height:150px;resize:vertical;border:1px solid #29313a;border-radius:7px;background:#090c10;color:#dce2e8;padding:14px;font:11px/1.8 "Microsoft YaHei",sans-serif; }
+.speech-result-actions { margin-top:10px;display:flex;justify-content:flex-end;gap:8px; }
+.speech-result-actions button { min-height:32px;padding:0 12px;border:1px solid #333c46;background:#171c22;color:#aab3bd;border-radius:5px;display:flex;align-items:center;gap:6px;cursor:pointer; }
+.speech-page button:disabled { opacity:.42;cursor:not-allowed; }
+@media (max-width:1120px) { .speech-grid { grid-template-columns:1fr; }.speech-side { display:grid;grid-template-columns:1fr 1fr; } }
 .pixel-help,.pixel-import-message { color:#626b76;font-size:8px;line-height:1.55;margin:10px 2px 0; }
 .pixel-import-message { color:#a9bd62; }
 .firmware-layout-note { margin-top:16px;padding:14px;border:1px solid #293039;background:#0d1014;border-radius:8px; }
@@ -279,6 +350,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .setting-row b { display:block;font-size:11px;margin-bottom:4px; }
 .setting-row span { display:block;color:#6e7681;font-size:9px; }
 .setting-row.compact { min-height:57px; }
+.speech-shortcut-setting small { display:block;margin-top:6px;color:#a5b86a;font-size:8px; }
+.speech-shortcut-actions { display:flex;align-items:center;gap:8px; }
+.shortcut-capture { min-width:150px;height:38px;padding:0 14px;border:1px solid #59652f;border-bottom-width:3px;border-radius:6px;background:#171c22;color:var(--accent);font:700 10px "Microsoft YaHei UI",sans-serif;cursor:pointer;outline:none; }
+.shortcut-capture:hover,.shortcut-capture:focus { border-color:var(--accent);box-shadow:0 0 0 2px rgba(214,255,56,.08); }
+.shortcut-capture.capturing { border-color:#78a9ff;color:#9fc0ff;animation:speech-capture-pulse 1.2s ease-in-out infinite; }
+@keyframes speech-capture-pulse { 50% { box-shadow:0 0 15px rgba(94,151,255,.28); } }
 .oled-select-wrap { position:relative;margin:7px 0 14px; }
 .oled-select-wrap select { width:100%;appearance:none;border:1px solid #343c46;background:#0d1014;color:#e8ebef;border-radius:8px;padding:12px 38px 12px 12px;font-size:11px;cursor:pointer;outline:none; }
 .oled-select-wrap select:focus { border-color:var(--accent);box-shadow:0 0 0 2px rgba(214,255,56,.08); }

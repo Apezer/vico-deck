@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   RUNTIME_PAGE,
   buildPersistentRuntimeBitmapPackets,
+  buildVoiceSessionPacket,
   buildRgbSettingsPacket,
   buildRuntimeBitmapPackets,
   buildRuntimeClaudeTextPacket,
@@ -75,5 +76,10 @@ assert.equal(persistentBitmapPackets.length, 43);
 assert.ok(persistentBitmapPackets.every(validateRuntimePacket));
 assert.deepEqual(persistentBitmapPackets.slice(0, -1), bitmapPackets);
 assert.equal(persistentBitmapPackets.at(-1)[2], 8);
+
+const voiceSessionPacket = buildVoiceSessionPacket(true);
+assert.equal(voiceSessionPacket[2], 9);
+assert.equal(voiceSessionPacket[3], 1);
+assert.ok(validateRuntimePacket(voiceSessionPacket));
 
 console.log("Runtime protocol passed: OLED, RGB, metrics, clock and checksum");

@@ -28,5 +28,28 @@ contextBridge.exposeInMainWorld("vico", {
     ipcRenderer.on("system:status", listener);
     return () => ipcRenderer.removeListener("system:status", listener);
   },
-  openExternal: (url) => ipcRenderer.invoke("external:open", url)
+  openExternal: (url) => ipcRenderer.invoke("external:open", url),
+  speech: {
+    check: () => ipcRenderer.invoke("speech:check"),
+    saveCredential: (key) => ipcRenderer.invoke("speech:credential:save", key),
+    clearCredential: () => ipcRenderer.invoke("speech:credential:clear"),
+    setShortcut: (shortcut) => ipcRenderer.invoke("speech:shortcut:set", shortcut),
+    transcribeRecording: (bytes, settings) => ipcRenderer.invoke("speech:recording", bytes, settings),
+    transcribeFile: (settings) => ipcRenderer.invoke("speech:file", settings),
+    cancel: () => ipcRenderer.invoke("speech:cancel"),
+    copyText: (text) => ipcRenderer.invoke("speech:copy", text),
+    saveText: (text) => ipcRenderer.invoke("speech:save", text),
+    updateShortcutState: (state) => ipcRenderer.invoke("speech:shortcut:state", state),
+    completeShortcut: (text) => ipcRenderer.invoke("speech:shortcut:result", text),
+    onShortcut: (callback) => {
+      const listener = (_event, value) => callback(value);
+      ipcRenderer.on("speech:shortcut", listener);
+      return () => ipcRenderer.removeListener("speech:shortcut", listener);
+    },
+    onProgress: (callback) => {
+      const listener = (_event, value) => callback(value);
+      ipcRenderer.on("speech:progress", listener);
+      return () => ipcRenderer.removeListener("speech:progress", listener);
+    }
+  }
 });

@@ -48,6 +48,7 @@ const PACKET_BITMAP_COMMIT = 5;
 const PACKET_CLAUDE_TEXT = 6;
 const PACKET_RGB_SETTINGS = 7;
 const PACKET_BITMAP_SAVE = 8;
+const PACKET_VOICE_SESSION = 9;
 const LABEL_BYTES = 16;
 const UNKNOWN_METRIC = 0xff;
 
@@ -222,4 +223,12 @@ export function buildPersistentRuntimeBitmapPackets(bitmap) {
   save[RUNTIME_PACKET_BYTES - 1] = checksum(save);
   packets.push(save);
   return packets;
+}
+
+/** 告诉 BLE 固件软件是否正在监听语音通知；USB 使用握手状态，无需该包。 */
+export function buildVoiceSessionPacket(enabled) {
+  const result = packet(PACKET_VOICE_SESSION);
+  result[3] = enabled ? 1 : 0;
+  result[RUNTIME_PACKET_BYTES - 1] = checksum(result);
+  return result;
 }

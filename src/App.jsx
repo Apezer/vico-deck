@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BatteryMedium, Bluetooth, ChevronDown, CircleHelp, Command, Cpu, Download,
-  Eraser, Gauge, Keyboard, Layers3, Monitor, Moon, MoreHorizontal, Palette, Pencil,
+  Eraser, Gauge, Keyboard, Layers3, Mic, Monitor, Moon, MoreHorizontal, Palette, Pencil,
   Play, Plus, Power, RefreshCw, Rocket, Save, Settings, SlidersHorizontal,
   Sparkles, Sun, Trash2, Unplug, Upload, Usb, Volume2, WifiOff, X
 } from "lucide-react";
 import { VicoBleDevice, VicoDevice } from "./device";
 import ClaudePage from "./ClaudePage";
+import SpeechPage from "./SpeechPage";
+import GlobalSpeechController from "./GlobalSpeechController";
 import LiveOledCanvas from "./LiveOledCanvas";
 import OledPixelCanvas from "./OledPixelCanvas";
 import { OLED_CONTENT_OPTIONS, renderRuntimePreview } from "./oled-runtime-preview";
@@ -24,6 +26,7 @@ import defaultProfiles from "../shared/default-profiles.json";
 const fallbackConfig = {
   schemaVersion: 2,
   startAtLogin: false, minimizeToTray: true, closeToTray: true,
+  speechShortcut: "CommandOrControl+Alt+I",
   oledRuntime: { page:"brand", autoClaude:true },
   rgb: { effect:0, brightness:50, speed:100, enabled:true, color:"#D6FF38" },
   activeProfile: "preset-1",
@@ -104,7 +107,7 @@ function Brand() {
 
 function Sidebar({ page, setPage }) {
   const items = [
-    ["keys", Keyboard, "按键配置"], ["oled", Monitor, "OLED 显示"], ["rgb", Palette, "RGB 灯光"], ["profiles", Layers3, "配置文件"], ["claude", Cpu, "Claude Code"], ["settings", Settings, "设置"]
+    ["keys", Keyboard, "按键配置"], ["oled", Monitor, "OLED 显示"], ["rgb", Palette, "RGB 灯光"], ["profiles", Layers3, "配置文件"], ["claude", Cpu, "Claude Code"], ["speech", Mic, "语音识别"], ["settings", Settings, "设置"]
   ];
   return <aside className="sidebar">
     <Brand />
@@ -507,7 +510,37 @@ function ProfilesPage({ config, status, syncing, onSelectProfile, onSyncCurrent,
   </section>;
 }
 
+function shortcutLabel(value) {
+  return String(value || "CommandOrControl+Alt+I")
+    .replace("CommandOrControl", "Ctrl")
+    .replaceAll("+", " + ");
+}
+
+function shortcutFromEvent(event) {
+  const aliases = {
+    " ":"Space", ArrowUp:"Up", ArrowDown:"Down", ArrowLeft:"Left", ArrowRight:"Right",
+    Esc:"Escape", Del:"Delete"
+  };
+  let key = aliases[event.key] || event.key;
+  if (["Control", "Alt", "Shift", "Meta"].includes(key)) return null;
+  if (/^[a-z0-9]$/i.test(key)) key = key.toUpperCase();
+  else if (!/^F(?:[1-9]|1[0-9]|2[0-4])$/i.test(key) &&
+      !["Space", "Tab", "Enter", "Escape", "Backspace", "Delete", "Insert", "Home", "End", "PageUp", "PageDown", "Up", "Down", "Left", "Right"].includes(key)) {
+    throw new Error("该按键暂不支持，请使用字母、数字、F1～F24 或常用功能键");
+  }
+  const modifiers = [];
+  if (event.ctrlKey) modifiers.push("CommandOrControl");
+  if (event.altKey) modifiers.push("Alt");
+  if (event.shiftKey) modifiers.push("Shift");
+  if (event.metaKey) modifiers.push("Super");
+  if (!modifiers.length) throw new Error("快捷键至少需要 Ctrl、Alt、Shift 或 Win 中的一个修饰键");
+  return [...modifiers, key].join("+");
+}
+
 function SettingsPage({ config, setConfig, version }) {
+  const [capturingShortcut, setCapturingShortcut] = useState(false);
+  const [shortcutMessage, setShortcutMessage] = useState("");
+  const shortcutButton = useRef(null);
   const setAutostart = async (value) => {
     const actual = window.vico ? await window.vico.setAutostart(value) : value;
     setConfig({ ...config, startAtLogin:actual });
@@ -517,9 +550,54 @@ function SettingsPage({ config, setConfig, version }) {
     ["关闭窗口时最小化到托盘", "保持按键服务与设备连接", config.closeToTray, (v) => setConfig({ ...config, closeToTray:v })],
     ["启动时隐藏主窗口", "配合开机自启动安静运行", config.launchMinimized, (v) => setConfig({ ...config, launchMinimized:v })]
   ];
+  useEffect(() => {
+    if (capturingShortcut) shortcutButton.current?.focus();
+  }, [capturingShortcut]);
+
+  const saveShortcut = async (shortcut) => {
+    setShortcutMessage("正在注册快捷键…");
+    try {
+      const response = window.vico?.speech?.setShortcut
+        ? await window.vico.speech.setShortcut(shortcut)
+        : { ok:true, data:{ shortcut } };
+      if (!response?.ok) throw new Error(response?.error || "快捷键注册失败");
+      setConfig((current) => ({ ...current, speechShortcut:response.data.shortcut }));
+      setShortcutMessage(`已启用 ${shortcutLabel(response.data.shortcut)}`);
+    } catch (error) {
+      setShortcutMessage(error.message || "快捷键注册失败");
+    } finally {
+      setCapturingShortcut(false);
+    }
+  };
+
+  const captureShortcut = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+      setCapturingShortcut(false);
+      setShortcutMessage("已取消修改");
+      return;
+    }
+    try {
+      const shortcut = shortcutFromEvent(event);
+      if (shortcut) saveShortcut(shortcut);
+    } catch (error) {
+      setShortcutMessage(error.message);
+    }
+  };
+
   return <section className="page-pad settings-page">
     <div className="page-heading"><div className="icon-box"><Settings/></div><div><span>PREFERENCES</span><h1>应用设置</h1><p>控制后台服务、启动方式与更新策略。</p></div></div>
     <div className="settings-block"><h2>启动与后台</h2>{rows.map(([title, sub, value, change]) => <div className="setting-row" key={title}><div><b>{title}</b><span>{sub}</span></div><Toggle value={value} onChange={change}/></div>)}</div>
+    <div className="settings-block"><h2>语音输入</h2>
+      <div className="setting-row speech-shortcut-setting">
+        <div><b>按住说话快捷键</b><span>按下开始录音，松开后识别并输入到原聊天框</span>{shortcutMessage && <small>{shortcutMessage}</small>}</div>
+        <div className="speech-shortcut-actions">
+          <button ref={shortcutButton} className={`shortcut-capture ${capturingShortcut ? "capturing" : ""}`} onClick={() => { setCapturingShortcut(true); setShortcutMessage("请直接按下新的组合键，Esc 取消"); }} onKeyDown={capturingShortcut ? captureShortcut : undefined}>{capturingShortcut ? "请按新快捷键…" : shortcutLabel(config.speechShortcut)}</button>
+          {config.speechShortcut !== "CommandOrControl+Alt+I" && <button className="secondary" onClick={() => saveShortcut("CommandOrControl+Alt+I")}>恢复默认</button>}
+        </div>
+      </div>
+    </div>
     <div className="settings-block"><h2>设备与更新</h2>
       <div className="setting-row"><div><b>Vico Keyboard Desktop</b><span>版本 {version} · Electron / WebHID</span></div><button className="secondary"><RefreshCw size={15}/>检查更新</button></div>
       <div className="setting-row"><div><b>设备通信协议</b><span>64-byte HID Feature Report · 草案 v1</span></div><span className="tag">开发模式</span></div>
@@ -544,6 +622,8 @@ export default function App() {
   const [hooksInstalling, setHooksInstalling] = useState(false);
   const [deviceSelection, setDeviceSelection] = useState(null);
   const [liveOledFrame, setLiveOledFrame] = useState(null);
+  const [voiceDeviceEvent, setVoiceDeviceEvent] = useState(null);
+  const [voiceTransferActive, setVoiceTransferActive] = useState(false);
   const deviceRef = useRef(null);
   const bleDeviceRef = useRef(null);
   const saveTimer = useRef(null);
@@ -561,9 +641,25 @@ export default function App() {
         return { ...current, oledRuntime };
       });
     };
-    deviceRef.current = new VicoDevice(setStatus, setLiveOledFrame, receiveRuntimeSettings);
+    const receiveVoiceEvent = (event) => {
+      setVoiceTransferActive(event.type === "recording" || event.type === "transfer");
+      setVoiceDeviceEvent({ ...event, receivedAt:Date.now() });
+      if (event.type === "recording") {
+        window.vico?.speech?.updateShortcutState?.({ state:"recording", source:"keyboard" });
+      } else if (event.type === "transfer" && event.recording === false) {
+        window.vico?.speech?.updateShortcutState?.({ state:"processing", source:"keyboard" });
+      } else if (event.type === "error") {
+        window.vico?.speech?.updateShortcutState?.({ state:"error", source:"keyboard", message:event.message });
+      }
+      // 录音开始时打开语音页，让用户立即看到电平、传输和识别状态。
+      if (event.type === "recording" || event.type === "complete" || event.type === "error" ||
+          (event.type === "transfer" && event.received === 0)) {
+        setPage("speech");
+      }
+    };
+    deviceRef.current = new VicoDevice(setStatus, setLiveOledFrame, receiveRuntimeSettings, receiveVoiceEvent);
     deviceRef.current.restore().catch(() => {});
-    bleDeviceRef.current = new VicoBleDevice(setBleStatus, () => {}, receiveRuntimeSettings);
+    bleDeviceRef.current = new VicoBleDevice(setBleStatus, () => {}, receiveRuntimeSettings, receiveVoiceEvent);
     bleDeviceRef.current.restore().catch(() => {});
     Promise.all([
       window.vico?.getConfig?.() || fallbackConfig,
@@ -603,32 +699,33 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!config) return;
+    if (!config || voiceTransferActive) return;
     const packets = buildRuntimeStatusPackets(claudeStatus, systemStatus);
     deviceRef.current?.writeRuntimePackets(packets).catch(() => {});
     bleDeviceRef.current?.writeRuntimePackets(packets).catch(() => {});
-  }, [config, claudeStatus, systemStatus, status.state, bleStatus.state]);
+  }, [config, claudeStatus, systemStatus, status.state, bleStatus.state, voiceTransferActive]);
 
   useEffect(() => {
+    if (voiceTransferActive) return;
     bleDeviceRef.current?.writeClaudeStatus(claudeStatus).catch(() => {});
-  }, [claudeStatus, bleStatus.state]);
+  }, [claudeStatus, bleStatus.state, voiceTransferActive]);
 
   useEffect(() => {
-    if (!config?.oledRuntime) return;
+    if (!config?.oledRuntime || voiceTransferActive) return;
     const packet = buildRuntimeSettingsPacket(config.oledRuntime);
     deviceRef.current?.writeRuntimePacket(packet).catch(() => {});
     bleDeviceRef.current?.writeRuntimePacket(packet).catch(() => {});
-  }, [config?.oledRuntime, status.state, bleStatus.state]);
+  }, [config?.oledRuntime, status.state, bleStatus.state, voiceTransferActive]);
 
   useEffect(() => {
-    if (config?.oledRuntime?.page !== "custom") return;
+    if (config?.oledRuntime?.page !== "custom" || voiceTransferActive) return;
     const packets = buildRuntimeBitmapPackets(bitmapFromBase64(activeOledBitmap));
     deviceRef.current?.writeRuntimePackets(packets).catch(() => {});
     bleDeviceRef.current?.writeRuntimePackets(packets).catch(() => {});
-  }, [config?.oledRuntime?.page, activeOledBitmap, status.state, bleStatus.state]);
+  }, [config?.oledRuntime?.page, activeOledBitmap, status.state, bleStatus.state, voiceTransferActive]);
 
   useEffect(() => {
-    if (!config?.rgb) return;
+    if (!config?.rgb || voiceTransferActive) return;
     clearTimeout(rgbSyncTimer.current);
     // 滑块拖动时只发送最后一个值，避免大量过期设置堆积在 BLE 写入队列中。
     rgbSyncTimer.current = setTimeout(() => {
@@ -637,7 +734,7 @@ export default function App() {
       bleDeviceRef.current?.writeRuntimePacket(packet).catch(() => {});
     }, 80);
     return () => clearTimeout(rgbSyncTimer.current);
-  }, [config?.rgb, status.state, bleStatus.state]);
+  }, [config?.rgb, status.state, bleStatus.state, voiceTransferActive]);
 
   useEffect(() => {
     if (!config) return;
@@ -667,7 +764,7 @@ export default function App() {
   }, [status.state, status.activeProfile]);
 
   const profile = useMemo(() => config?.profiles.find((p) => p.id === config.activeProfile) || config?.profiles[0], [config]);
-  if (!config || !profile) return <div className="loading"><div className="brand-mark"><span>V</span></div><p>正在准备你的工作台…</p></div>;
+  if (!config || !profile) return <><GlobalSpeechController/><div className="loading"><div className="brand-mark"><span>V</span></div><p>正在准备你的工作台…</p></div></>;
 
   const updateProfile = (next) => setConfig((current) => ({
     ...current,
@@ -778,7 +875,7 @@ export default function App() {
     catch (error) { setToast(error.message); }
   };
 
-  return <div className="app-shell">
+  return <><GlobalSpeechController/><div className="app-shell">
     <Sidebar page={page} setPage={setPage}/>
     <main className="main">
       <Header status={status} connect={connect} disconnect={disconnect} syncing={syncing} sync={sync}/>
@@ -816,10 +913,11 @@ export default function App() {
         />}
         {page === "profiles" && <ProfilesPage config={config} status={status} syncing={syncing} onSelectProfile={selectProfile} onSyncCurrent={sync} onSyncAll={syncAll}/>}
         {page === "claude" && <ClaudePage claudeStatus={claudeStatus} usbStatus={status} bleStatus={bleStatus} hooksState={hooksState} activity={activity} connecting={bleConnecting} installing={hooksInstalling} onConnect={connectBle} onDisconnect={disconnectBle} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
+        {page === "speech" && <SpeechPage deviceEvent={voiceDeviceEvent} usbStatus={status} bleStatus={bleStatus} onConnectBle={connectBle} connecting={bleConnecting}/>}
         {page === "settings" && <SettingsPage config={config} setConfig={setConfig} version={version}/>}
       </div>
     </main>
     <DeviceSelectionDialog request={deviceSelection} onSelect={selectDevice}/>
     {toast && <div className="toast" onAnimationEnd={() => setToast("")}><Sparkles size={15}/>{toast}</div>}
-  </div>;
+  </div></>;
 }

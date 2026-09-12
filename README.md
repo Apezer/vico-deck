@@ -46,6 +46,7 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 - 五套固定预设，可分别编辑并同步到键盘 NVS
 - OLED 实时页面：Claude Code、CPU/GPU/内存、时钟日期和设备状态
 - RGB 灯光工作室：六种灯效、亮度、速度和总开关，通过 USB/BLE 实时同步
+- INMP441 按住说话：旋钮按下录音、松开后通过 USB/BLE 发送并调用豆包云端识别
 - USB WebHID 与 BLE GATT 共用紧凑运行时状态协议
 - Fn + KEY1～KEY5 可在不运行软件时切换 P1～P5
 - 通过设备 CRC 自动判断每套预设是否已经同步
@@ -69,6 +70,16 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 - 通过 localhost 安全传递到 VicoDeck 后台
 - 使用 BLE GATT 转发至 ESP32-S3
 - 保留最近事件记录
+
+### 语音输入
+
+- 独立语音输入页面，可选择电脑麦克风并通过按钮开始/停止录音
+- 电脑麦克风方案不依赖键盘连接或语音固件，也可接收兼容固件发送的录音
+- 可在设置中修改全局按住说话快捷键（默认 `Ctrl + Alt + I`）：按下录音、松开识别，并把结果粘贴到原输入框
+- 录音期间显示不抢焦点的桌面麦克风悬浮提示；页面内录音按钮仅用于 API 连通测试
+- 使用豆包 Seed-ASR 2.0 云端模型，不下载本地 Whisper 模型
+- API Key 通过 Electron `safeStorage` 调用 Windows DPAPI 加密保存
+- 支持自动标点、数字规整、语义顺滑、复制和导出 TXT
 - 支持发送测试状态
 
 ### Windows 桌面体验
@@ -197,10 +208,15 @@ vico-deck/
 ├─ electron/
 │  ├─ main.cjs              # Electron 主进程、托盘和权限
 │  ├─ preload.cjs           # 安全 IPC 桥接
-│  └─ claude-monitor.cjs    # Hooks 安装与状态服务
+│  ├─ claude-monitor.cjs    # Hooks 安装与状态服务
+│  ├─ doubao-service.cjs    # 豆包 Seed-ASR 2.0 提交与轮询
+│  └─ credential-store.cjs  # Windows DPAPI API Key 存储
 ├─ src/
 │  ├─ App.jsx               # 主界面与应用状态
 │  ├─ ClaudePage.jsx        # Claude Code Relay 页面
+│  ├─ SpeechPage.jsx        # 电脑/键盘录音、云端配置与识别结果
+│  ├─ useRecorder.js        # 电脑麦克风采集与 WAV 编码
+│  ├─ voice-protocol.js     # 音频分片、CRC32 与 WAV 封装
 │  ├─ device.js             # WebHID / BLE GATT 适配器
 │  └─ styles.css            # UI 视觉系统
 ├─ test/
@@ -225,6 +241,7 @@ vico-deck/
 - [x] OLED 位图编辑与分片传输协议
 - [x] 固件端接收、CRC32 校验并持久化 OLED 位图
 - [x] RGB 灯效配置与设备端持久化
+- [x] INMP441 按住说话与豆包云端语音识别
 - [ ] 固件升级工具
 - [ ] macOS 支持
 - [ ] 正式代码签名
