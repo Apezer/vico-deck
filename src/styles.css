@@ -277,7 +277,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .speech-orb svg { width:38px;height:38px; }
 .speech-orb.recording { color:#ff7272;border-color:#8a3e41;background:radial-gradient(circle,rgba(255,82,82,.2),rgba(255,82,82,.03) 68%);animation:speech-pulse 1.2s ease-in-out infinite; }
 .speech-orb.busy { animation:speech-pulse 1.6s ease-in-out infinite; }
-@keyframes speech-pulse { 50% { transform:scale(1.06);box-shadow:0 0 36px currentColor; } }
+@keyframes speech-pulse { 50% { box-shadow:0 0 36px currentColor; } }
 .speech-main-card h2 { margin:19px 0 13px;font-size:16px;color:#e9edf2; }
 .speech-progress { width:min(420px,90%);height:5px;background:#222831;border-radius:4px;overflow:hidden; }
 .speech-progress i { display:block;height:100%;background:var(--accent);transition:width .12s linear;box-shadow:0 0 8px var(--accent); }

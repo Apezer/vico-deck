@@ -128,12 +128,12 @@ function Header({ status, connect, disconnect, syncing, sync }) {
   return <header className="topbar">
     <div className="crumb"><span>Vico Keyboard</span><ChevronDown size={15}/></div>
     <div className="top-actions">
-      <div className={`device-pill ${connected ? "connected" : connecting ? "connecting" : ""}`}><span className="status-dot"/>{connected ? `${status.name}${battery ? ` · ${battery}` : ""}` : connecting ? "正在验证 Vico 固件" : "设备未连接"}</div>
+      <div className={`device-pill ${connected ? "connected" : connecting ? "connecting" : ""}`}><span className="status-dot"/>{connected ? `${status.name}${battery ? ` · ${battery}` : ""}` : connecting ? "正在验证 Vico USB 固件" : "USB 设备未连接"}</div>
       <button className="ghost square"><MoreHorizontal size={19}/></button>
       {connected && <button className="secondary header-disconnect" onClick={disconnect}><Unplug size={15}/>断开</button>}
       <button className="connect-btn" onClick={connected ? sync : connect} disabled={syncing || connecting}>
         {syncing || connecting ? <RefreshCw className="spin" size={16}/> : connected ? <Save size={16}/> : <Usb size={16}/>}
-        {syncing ? "正在同步" : connecting ? "正在连接" : connected ? "同步到设备" : "连接设备"}
+        {syncing ? "正在同步" : connecting ? "正在连接 USB" : connected ? "同步到设备" : "USB 连接设备"}
       </button>
     </div>
   </header>;

@@ -24,6 +24,8 @@ let speechCredentials;
 let speechBusy = false;
 let speechOverlayWindow;
 let speechOverlayHideTimer;
+// 一次语音会话期间锁定显示器，避免状态切换或鼠标跨屏导致悬浮窗跳动。
+let speechOverlayDisplayId = null;
 let speechShortcutState = "idle";
 let speechTargetWindowHandle = "0";
 let speechShortcutRegistered = false;
@@ -444,11 +446,11 @@ function createSpeechOverlay() {
     #icon{position:relative;width:43px;height:43px;flex:none;display:grid;place-items:center;border-radius:50%;background:rgba(214,255,56,.11);color:#d6ff38;box-shadow:0 0 18px rgba(214,255,56,.16)}
     #icon::before{content:"";position:absolute;inset:-6px;padding:2px;border-radius:50%;opacity:0;background:conic-gradient(from 0deg,transparent 0 18%,rgba(214,255,56,.18) 34%,#d6ff38 62%,#fff 72%,transparent 86%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;filter:drop-shadow(0 0 4px rgba(214,255,56,.85));pointer-events:none}
     #icon svg{width:23px;height:23px}b,span{display:block}b{font-size:13px;margin-bottom:5px}span{font-size:10px;color:#929da8;white-space:nowrap}
-    body[data-state="recording"] #icon{color:#ff7474;background:rgba(255,82,82,.13);animation:pulse 1.15s ease-in-out infinite}
+    body[data-state="recording"] #icon{color:#ff7474;background:rgba(255,82,82,.13);animation:recording-glow 1.15s ease-in-out infinite}
     body[data-state="recording"] #card{border-color:rgba(255,102,102,.48)}
     body[data-state="processing"] #icon::before{opacity:1;animation:speech-ring 1.15s linear infinite}
     body[data-state="done"] #icon{color:#d6ff38}body[data-state="error"] #icon{color:#ff7474}
-    @keyframes pulse{50%{transform:scale(1.1);box-shadow:0 0 25px currentColor}}@keyframes speech-ring{to{transform:rotate(360deg)}}
+    @keyframes recording-glow{50%{box-shadow:0 0 25px currentColor}}@keyframes speech-ring{to{transform:rotate(360deg)}}
   </style></head><body data-state="recording"><div id="card"><div id="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg></div><div><b id="title">正在录音</b><span id="message">松开快捷键后停止并识别</span></div></div><script>
     window.setSpeechState=(state,title,message)=>{document.body.dataset.state=state;document.getElementById("title").textContent=title;document.getElementById("message").textContent=message};
   </script></body></html>`;
@@ -457,12 +459,23 @@ function createSpeechOverlay() {
 
 function placeAndShowSpeechOverlay() {
   if (!speechOverlayWindow || speechOverlayWindow.isDestroyed()) createSpeechOverlay();
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const displays = screen.getAllDisplays();
+  let display = displays.find((item) => String(item.id) === String(speechOverlayDisplayId));
+  if (!display) {
+    display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    speechOverlayDisplayId = display.id;
+  }
   const [width, height] = speechOverlayWindow.getSize();
   const x = Math.round(display.workArea.x + (display.workArea.width - width) / 2);
   const y = display.workArea.y + display.workArea.height - height - 26;
-  speechOverlayWindow.setPosition(x, y, false);
+  speechOverlayWindow.setBounds({ x, y, width, height }, false);
   speechOverlayWindow.showInactive();
+}
+
+/** 新语音会话只在开始时选择一次鼠标所在显示器。 */
+function beginSpeechOverlaySession(state, title, message) {
+  speechOverlayDisplayId = null;
+  updateSpeechOverlay(state, title, message);
 }
 
 function updateSpeechOverlay(state, title, message, hideDelay = 0) {
@@ -471,7 +484,10 @@ function updateSpeechOverlay(state, title, message, hideDelay = 0) {
   const script = `window.setSpeechState(${JSON.stringify(state)},${JSON.stringify(title)},${JSON.stringify(message)})`;
   speechOverlayWindow.webContents.executeJavaScript(script).catch(() => {});
   if (hideDelay > 0) {
-    speechOverlayHideTimer = setTimeout(() => speechOverlayWindow?.hide(), hideDelay);
+    speechOverlayHideTimer = setTimeout(() => {
+      speechOverlayWindow?.hide();
+      speechOverlayDisplayId = null;
+    }, hideDelay);
   }
 }
 
@@ -509,7 +525,7 @@ async function handleSpeechShortcut() {
   if (speechShortcutState !== "idle") return;
 
   speechShortcutState = "starting";
-  updateSpeechOverlay("processing", "正在启动麦克风", `按住 ${shortcutLabel()} 说话`);
+  beginSpeechOverlaySession("processing", "正在启动麦克风", `按住 ${shortcutLabel()} 说话`);
   try {
     // 焦点窗口捕获与按键释放监听并行执行，避免 PowerShell 启动时间延迟录音。
     const targetWindowPromise = getForegroundWindowHandle().catch(() => "0");
@@ -610,6 +626,7 @@ ipcMain.handle("speech:shortcut:state", (_event, value = {}) => speechResult(asy
   if (state === "recording") {
     if (keyboardSource && speechShortcutState === "idle") {
       speechTargetWindowHandle = await getForegroundWindowHandle().catch(() => "0");
+      speechOverlayDisplayId = null;
     }
     speechShortcutState = "recording";
     updateSpeechOverlay(
