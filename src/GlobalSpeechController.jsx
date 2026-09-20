@@ -59,7 +59,7 @@ export default function GlobalSpeechController() {
         stopRequestedRef.current = false;
         const cloud = await window.vico.speech.check();
         if (!cloud?.ok) throw new Error(cloud?.error || "无法检查语音识别服务");
-        if (!cloud.data?.configured) throw new Error("请先在 Vico Keyboard 的语音识别页面保存豆包 API Key");
+        if (!cloud.data?.configured) throw new Error("请先在 VicoDeck 的语音识别页面保存豆包 API Key");
 
         const microphoneId = localStorage.getItem("vico-speech-microphone") || "";
         await recorderRef.current.start(microphoneId, async (wavBytes) => {

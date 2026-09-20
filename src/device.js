@@ -422,37 +422,8 @@ export class VicoDevice {
   }
 }
 
-const BLE_SERVICE_UUID = "7b6a0001-7c6e-4b3d-9f5f-7669636f0001";
-const BLE_RX_UUID = "7b6a0002-7c6e-4b3d-9f5f-7669636f0002";
-const BLE_TX_UUID = "7b6a0003-7c6e-4b3d-9f5f-7669636f0003";
-const BLE_BATTERY_SERVICE_UUID = "0000180f-0000-1000-8000-00805f9b34fb";
-const BLE_BATTERY_LEVEL_UUID = "00002a19-0000-1000-8000-00805f9b34fb";
-const BLE_CONNECT_TIMEOUT_MS = 10000;
-const BLE_DISCONNECT_SETTLE_MS = 500;
-const BLE_SERVICE_DISCOVERY_ATTEMPTS = 3;
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function withBleTimeout(operation, message, timeout = BLE_CONNECT_TIMEOUT_MS) {
-  let timer;
-  return Promise.race([
-    Promise.resolve(operation),
-    new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(message)), timeout);
-    })
-  ]).finally(() => clearTimeout(timer));
-}
-
 export class VicoBleDevice {
   constructor(onStatus, onAck, onRuntimeSettings = () => {}, onVoice = () => {}) {
-    this.device = null;
-    // 保留已经成功发现过 Vico 服务的对象，避免手动断开后换成带旧 GATT 缓存的新对象。
-    this.knownDevice = null;
-    this.rx = null;
-    this.tx = null;
-    this.battery = null;
     this.connectedStatus = null;
     this.sessionActive = false;
     this.onStatus = onStatus;
@@ -466,221 +437,111 @@ export class VicoBleDevice {
       onVoice(event);
     });
     this.disconnectPromise = Promise.resolve();
-    this.txHandler = (event) => {
-      const view = event.target.value;
-      const value = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
-      if (this.voiceReceiver.accept(value)) return;
-      const runtimeSettings = parseRuntimeSettingsPacket(value);
-      if (runtimeSettings) {
-        this.onRuntimeSettings(runtimeSettings);
-        return;
-      }
-      const text = new TextDecoder().decode(value);
-      this.onAck?.(text);
-    };
-    this.batteryHandler = (event) => {
-      const batteryPercent = event.target.value.getUint8(0);
-      this.connectedStatus = { ...this.connectedStatus, batteryPercent };
-      this.onStatus(this.connectedStatus);
-    };
-    this.disconnectHandler = () => {
-      this.device?.removeEventListener("gattserverdisconnected", this.disconnectHandler);
-      this.device = null;
-      this.clearConnectionState();
-      this.onStatus({ state: "disconnected" });
-    };
+    this.removeBridgeListener = globalThis.window?.vico?.ble?.onEvent?.(
+      (event) => this.handleBridgeEvent(event)
+    );
   }
 
   clearConnectionState() {
     if (this.voiceExclusive) this.onVoice({ type:"error", message:"蓝牙 GATT 已断开，语音录音已取消" });
-    this.tx?.removeEventListener("characteristicvaluechanged", this.txHandler);
-    this.battery?.removeEventListener("characteristicvaluechanged", this.batteryHandler);
-    this.rx = null;
-    this.tx = null;
-    this.battery = null;
     this.connectedStatus = null;
     this.sessionActive = false;
+    this.runtimeWriteQueue = Promise.resolve();
     this.voiceReceiver.reset();
     this.voiceExclusive = false;
   }
 
-  /** 新固件用该运行时包确认软件是否正在监听语音；旧特征会被安全忽略。 */
-  async setVoiceSession(enabled) {
-    if (!this.rx || !this.device?.gatt?.connected) return false;
-    const packet = buildVoiceSessionPacket(enabled);
-    const operation = this.rx.properties?.write && this.rx.writeValueWithResponse
-      ? this.rx.writeValueWithResponse(packet)
-      : this.rx.writeValueWithoutResponse?.(packet);
-    if (!operation) return false;
-    await operation;
-    return true;
+  bridge() {
+    const bridge = globalThis.window?.vico?.ble;
+    if (!bridge?.command) throw new Error("蓝牙后台服务尚未就绪，请重新启动软件");
+    return bridge;
+  }
+
+  applyConnectedStatus(status) {
+    this.connectedStatus = {
+      state:"connected",
+      name:status?.name || "Vico Keyboard",
+      batteryPercent:status?.batteryPercent ?? null
+    };
+    this.sessionActive = true;
+    this.onStatus(this.connectedStatus);
+  }
+
+  handleIncomingBytes(bytes) {
+    const value = Uint8Array.from(bytes || []);
+    if (this.voiceReceiver.accept(value)) return;
+    const runtimeSettings = parseRuntimeSettingsPacket(value);
+    if (runtimeSettings) {
+      this.onRuntimeSettings(runtimeSettings);
+      return;
+    }
+    this.onAck?.(new TextDecoder().decode(value));
+  }
+
+  handleBridgeEvent(event) {
+    switch (event?.type) {
+      case "connecting":
+        this.onStatus({ state:"connecting", name:event.name || "Vico Keyboard" });
+        break;
+      case "connected":
+        this.applyConnectedStatus(event.status);
+        break;
+      case "battery":
+        if (this.connectedStatus) {
+          this.connectedStatus = { ...this.connectedStatus, batteryPercent:event.batteryPercent };
+          this.onStatus(this.connectedStatus);
+        }
+        break;
+      case "data":
+        this.handleIncomingBytes(event.bytes);
+        break;
+      case "unexpected-disconnect":
+      case "disconnected":
+        this.clearConnectionState();
+        this.onStatus({ state:"disconnected" });
+        break;
+      default:
+        break;
+    }
   }
 
   async restore() {
-    if (!navigator.bluetooth?.getDevices) return;
-    const devices = await navigator.bluetooth.getDevices();
-    const found = devices.find((device) => /vico keyboard/i.test(device.name || ""));
-    if (found) await this.open(found);
+    const status = await this.bridge().command("restore");
+    if (status?.state === "connected") {
+      this.applyConnectedStatus(status);
+      await this.setVoiceSession(true).catch(() => {});
+    } else if (status?.state === "unsupported") {
+      this.onStatus(status);
+    }
+    return status;
   }
 
   async request() {
-    if (!navigator.bluetooth) throw new Error("当前环境不支持蓝牙 GATT");
-
-    // disconnect() 对 Web Bluetooth 来说是同步调用，但 Windows 释放底层连接需要时间。
-    await this.disconnectPromise;
-
-    if (this.knownDevice) {
-      try {
-        await this.open(this.knownDevice);
-        return this.knownDevice;
-      } catch {
-        // 已知对象失效时继续尝试授权设备；不要要求用户重启整个软件。
-      }
-    }
-
-    // 首次授权后直接复用浏览器保存的设备对象。这样即使键盘已被Windows HID连接、
-    // 当前没有出现在扫描列表中，断开自定义GATT后仍可稳定重新连接。
-    if (navigator.bluetooth.getDevices) {
-      const devices = await navigator.bluetooth.getDevices();
-      const authorized = devices.find((device) => /vico keyboard/i.test(device.name || ""));
-      if (authorized) {
-        try {
-          await this.open(authorized);
-          return authorized;
-        } catch {
-          // 缓存对象连接失败时清理旧链路，再回退到用户可见的设备扫描流程。
-          if (authorized.gatt?.connected) authorized.gatt.disconnect();
-          this.clearConnectionState();
-        }
-      }
-    }
-
-    const device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: "Vico Keyboard" }],
-      optionalServices: [BLE_SERVICE_UUID, BLE_BATTERY_SERVICE_UUID]
-    });
-    await this.open(device);
-    return device;
+    await this.disconnectPromise.catch(() => {});
+    this.disconnectPromise = Promise.resolve();
+    this.onStatus({ state:"connecting", name:"Vico Keyboard" });
+    const status = await this.bridge().command("connect");
+    this.applyConnectedStatus(status);
+    await this.setVoiceSession(true).catch(() => {});
+    return status;
   }
 
-  async open(device) {
-    // “断开软件连接”不会破坏 Windows HID 正在共用的物理 BLE 链路。
-    // 如果服务和特征仍然有效，直接恢复监听即可，无需再次执行慢速服务发现。
-    if (this.device === device && device.gatt?.connected && this.rx && this.tx) {
-      this.tx.removeEventListener("characteristicvaluechanged", this.txHandler);
-      this.tx.addEventListener("characteristicvaluechanged", this.txHandler);
-      if (this.battery) {
-        this.battery.removeEventListener("characteristicvaluechanged", this.batteryHandler);
-        this.battery.addEventListener("characteristicvaluechanged", this.batteryHandler);
-      }
-      await this.setVoiceSession(true).catch(() => {});
-      this.sessionActive = true;
-      this.onStatus(this.connectedStatus || {
-        state:"connected",
-        name:device.name || "Vico Keyboard",
-        batteryPercent:null
-      });
-      return;
-    }
-
-    this.device?.removeEventListener("gattserverdisconnected", this.disconnectHandler);
-    this.clearConnectionState();
-    this.device = device;
-    this.device.addEventListener("gattserverdisconnected", this.disconnectHandler);
-
-    this.onStatus({ state: "connecting", name: device.name || "Vico Keyboard" });
-    try {
-      const { server, service } = await this.connectAndDiscoverVicoService(device);
-      this.rx = await withBleTimeout(service.getCharacteristic(BLE_RX_UUID), "读取蓝牙发送通道超时");
-      this.tx = await withBleTimeout(service.getCharacteristic(BLE_TX_UUID), "读取蓝牙通知通道超时");
-      let batteryPercent = null;
-      this.connectedStatus = { state:"connected", name:device.name || "Vico Keyboard", batteryPercent };
-
-      // 标准HID Battery Service读取失败不影响Vico自定义GATT连接。
-      try {
-        const batteryService = await withBleTimeout(
-          server.getPrimaryService(BLE_BATTERY_SERVICE_UUID),
-          "读取电池服务超时",
-          4000
-        );
-        this.battery = await withBleTimeout(
-          batteryService.getCharacteristic(BLE_BATTERY_LEVEL_UUID),
-          "读取电池特征超时",
-          4000
-        );
-        const initialBattery = await withBleTimeout(this.battery.readValue(), "读取电量超时", 4000);
-        batteryPercent = initialBattery.getUint8(0);
-        if (this.battery.properties.notify) {
-          await withBleTimeout(this.battery.startNotifications(), "订阅电量通知超时", 4000);
-          this.battery.addEventListener("characteristicvaluechanged", this.batteryHandler);
-        }
-      } catch {
-        this.battery = null;
-      }
-
-      if (this.tx.properties.notify) {
-        await withBleTimeout(this.tx.startNotifications(), "订阅 Vico 状态通知超时");
-        this.tx.addEventListener("characteristicvaluechanged", this.txHandler);
-      }
-
-      // 只有监听器安装完成后才允许固件发送录音，避免首包在页面准备前丢失。
-      // 旧固件没有语音会话包；握手失败不应破坏原有 OLED/RGB 连接。
-      await this.setVoiceSession(true).catch(() => {});
-
-      this.connectedStatus = { ...this.connectedStatus, batteryPercent };
-      this.knownDevice = device;
-      this.sessionActive = true;
-      this.onStatus(this.connectedStatus);
-    } catch (error) {
-      this.device?.removeEventListener("gattserverdisconnected", this.disconnectHandler);
-      if (device.gatt?.connected) device.gatt.disconnect();
-      this.device = null;
-      this.clearConnectionState();
-      this.onStatus({ state:"disconnected" });
-      throw error;
-    }
+  /** 新固件用该运行时包确认软件是否正在监听语音；旧固件会安全忽略。 */
+  async setVoiceSession(enabled) {
+    if (!this.sessionActive && enabled) return false;
+    return this.bridge().command("write", {
+      packets:[Array.from(buildVoiceSessionPacket(enabled))]
+    });
   }
 
   async writeRuntimePacket(packet) {
-    if (!this.sessionActive || !this.rx || !this.device?.gatt?.connected) return false;
+    if (!this.sessionActive) return false;
     return this.writeRuntimePackets([packet]);
-  }
-
-  /**
-   * Windows 和 Chromium 在快速断开、重连时可能暂时返回旧的 GATT 服务缓存。
-   * 服务发现失败后重新建立完整链路，避免把临时缓存问题误报为固件缺少服务。
-   */
-  async connectAndDiscoverVicoService(device) {
-    let lastError = null;
-    for (let attempt = 0; attempt < BLE_SERVICE_DISCOVERY_ATTEMPTS; attempt += 1) {
-      try {
-        const server = device.gatt.connected
-          ? device.gatt
-          : await withBleTimeout(device.gatt.connect(), "蓝牙连接超时，请关闭键盘后重试");
-        const service = await withBleTimeout(
-          server.getPrimaryService(BLE_SERVICE_UUID),
-          "Vico 状态服务发现超时"
-        );
-        return { server, service };
-      } catch (error) {
-        lastError = error;
-        // 这是内部恢复动作，不应触发普通断线处理器把正在重连的设备对象清空。
-        device.removeEventListener("gattserverdisconnected", this.disconnectHandler);
-        if (device.gatt?.connected) device.gatt.disconnect();
-        if (attempt + 1 < BLE_SERVICE_DISCOVERY_ATTEMPTS) {
-          await wait(BLE_DISCONNECT_SETTLE_MS * (attempt + 1));
-          if (this.device === device) {
-            device.addEventListener("gattserverdisconnected", this.disconnectHandler);
-          }
-        }
-      }
-    }
-    throw new Error("没有发现 Vico 状态服务。已自动重试，请关闭再打开键盘蓝牙，或在 Windows 中重新连接后重试。", { cause:lastError });
   }
 
   /** 兼容参考 GATT 项目的紧凑 JSON state/tool/text 状态格式。 */
   async writeClaudeStatus(status) {
-    if (!this.sessionActive || !this.rx || !this.device?.gatt?.connected || this.voiceExclusive) return false;
+    if (!this.sessionActive || this.voiceExclusive) return false;
     const payload = new TextEncoder().encode(JSON.stringify({
       state:String(status?.state || "offline").slice(0, 12),
       tool:String(status?.tool || "").slice(0, 14),
@@ -688,20 +549,17 @@ export class VicoBleDevice {
     }));
     this.runtimeWriteQueue = this.runtimeWriteQueue.catch(() => {}).then(async () => {
       if (this.voiceExclusive) return false;
-      if (this.rx.properties.write) await this.rx.writeValueWithResponse(payload);
-      else await this.rx.writeValueWithoutResponse(payload);
-      return true;
+      return this.bridge().command("write", { packets:[Array.from(payload)] });
     });
     return this.runtimeWriteQueue;
   }
 
   async writeRuntimePackets(packets) {
-    if (!this.sessionActive || !this.rx || !this.device?.gatt?.connected || this.voiceExclusive) return false;
+    if (!this.sessionActive || this.voiceExclusive) return false;
     this.runtimeWriteQueue = this.runtimeWriteQueue.catch(() => {}).then(async () => {
       for (const packet of packets) {
         if (this.voiceExclusive) return false;
-        if (this.rx.properties.write) await this.rx.writeValueWithResponse(packet);
-        else await this.rx.writeValueWithoutResponse(packet);
+        await this.bridge().command("write", { packets:[Array.from(packet)] });
       }
       return true;
     });
@@ -709,17 +567,16 @@ export class VicoBleDevice {
   }
 
   disconnect() {
-    // 键盘的 HID 与配置 GATT 共用同一条 Windows BLE 物理连接。这里仅暂停软件会话，
-    // 不调用 gatt.disconnect()，否则 Windows 保留 HID 后 Chromium 可能无法重新发现服务。
-    if (this.sessionActive && this.rx && this.device?.gatt?.connected) {
-      this.disconnectPromise = this.setVoiceSession(false).catch(() => {});
+    const bridge = this.bridge();
+    const wasActive = this.sessionActive;
+    this.disconnectPromise = (wasActive
+      ? bridge.command("write", { packets:[Array.from(buildVoiceSessionPacket(false))] }).catch(() => {})
+      : Promise.resolve()
+    ).then(() => bridge.command("disconnect")).catch(() => {});
+    if (this.voiceExclusive) {
+      this.onVoice({ type:"error", message:"蓝牙 GATT 已断开，语音录音已取消" });
     }
-    if (this.voiceExclusive) this.onVoice({ type:"error", message:"蓝牙 GATT 已断开，语音录音已取消" });
-    this.sessionActive = false;
-    this.voiceExclusive = false;
-    this.voiceReceiver.reset();
-    this.tx?.removeEventListener("characteristicvaluechanged", this.txHandler);
-    this.battery?.removeEventListener("characteristicvaluechanged", this.batteryHandler);
+    this.clearConnectionState();
     this.onStatus({ state: "disconnected" });
   }
 }

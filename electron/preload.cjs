@@ -8,11 +8,30 @@ contextBridge.exposeInMainWorld("vico", {
   minimize: () => ipcRenderer.invoke("window:minimize"),
   hide: () => ipcRenderer.invoke("window:hide"),
   getVersion: () => ipcRenderer.invoke("app:version"),
+  updates: {
+    getState: () => ipcRenderer.invoke("updater:state"),
+    check: () => ipcRenderer.invoke("updater:check"),
+    download: () => ipcRenderer.invoke("updater:download"),
+    install: () => ipcRenderer.invoke("updater:install"),
+    onStateChanged: (callback) => {
+      const listener = (_event, value) => callback(value);
+      ipcRenderer.on("updater:state-changed", listener);
+      return () => ipcRenderer.removeListener("updater:state-changed", listener);
+    }
+  },
   selectDevice: (requestId, deviceId) => ipcRenderer.invoke("device:select", { requestId, deviceId }),
   onDeviceSelection: (callback) => {
     const listener = (_event, request) => callback(request);
     ipcRenderer.on("device:selection-requested", listener);
     return () => ipcRenderer.removeListener("device:selection-requested", listener);
+  },
+  ble: {
+    command: (type, payload = {}) => ipcRenderer.invoke("ble:command", { type, ...payload }),
+    onEvent: (callback) => {
+      const listener = (_event, value) => callback(value);
+      ipcRenderer.on("ble:event", listener);
+      return () => ipcRenderer.removeListener("ble:event", listener);
+    }
   },
   getClaudeStatus: () => ipcRenderer.invoke("claude:status:get"),
   getClaudeHooksState: () => ipcRenderer.invoke("claude:hooks:get"),

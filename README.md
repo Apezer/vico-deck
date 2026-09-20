@@ -104,6 +104,17 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 
 > 当前安装包尚未进行商业代码签名，Windows SmartScreen 可能显示未知发布者提示。请只从本仓库 Releases 页面下载。
 
+### 软件更新
+
+安装版可在“应用设置 → 设备与更新”中手动检查更新。更新元数据和安装包由
+`https://update.zheng2005.xyz/` 提供；发现新版本后由用户确认下载，下载完成后
+点击“重启并安装”完成升级。源码开发模式不会执行安装更新。
+
+发布新版本时先更新 `package.json` 的版本号，再运行 `npm run dist`。将生成的
+`latest.yml`、`VicoDeck-Setup-<version>.exe` 和对应 `.blockmap` 上传到服务器
+`/www/wwwroot/vico-update/`。应最后上传 `latest.yml`，避免客户端在安装包尚未上传
+完整时发现新版本。
+
 ### Claude Code hooks
 
 VicoDeck 会把自己的 hook 条目合并到：

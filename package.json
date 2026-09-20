@@ -1,7 +1,7 @@
 {
   "name": "vico-keyboard",
-  "version": "0.2.0",
-  "description": "Vico Keyboard desktop companion",
+  "version": "0.2.4",
+  "description": "VicoDeck desktop companion for Vico Keyboard",
   "main": "electron/main.cjs",
   "author": "Vico",
   "license": "MIT",
@@ -19,17 +19,24 @@
     "test:voice": "node test/voice-protocol.test.mjs",
     "test:recorder": "node test/recorder-wav.test.mjs",
     "test:speech": "node --test test/doubao-service.test.cjs test/credential-store.test.cjs",
+    "test:update": "node test/update-service.test.cjs",
     "preview": "vite preview",
     "start": "electron .",
     "dist": "npm run build && electron-builder --win nsis"
   },
-  "dependencies": {},
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "overrides": {
+    "js-yaml": "4.3.2"
+  },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
     "lucide-react": "^0.468.0",
+    "rcedit": "^5.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "vite": "^6.0.5",
@@ -37,7 +44,8 @@
   },
   "build": {
     "appId": "com.vico.keyboard",
-    "productName": "Vico Keyboard",
+    "productName": "VicoDeck",
+    "afterPack": "electron/after-pack.cjs",
     "directories": {
       "output": "release"
     },
@@ -50,9 +58,16 @@
     ],
     "win": {
       "target": "nsis",
+      "artifactName": "VicoDeck-Setup-${version}.${ext}",
       "icon": "asserts/vico-keyboard.ico",
       "signAndEditExecutable": false
     },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://update.zheng2005.xyz/"
+      }
+    ],
     "nsis": {
       "installerIcon": "asserts/vico-keyboard.ico",
       "uninstallerIcon": "asserts/vico-keyboard.ico",

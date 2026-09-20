@@ -161,7 +161,7 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnec
 
   const handleRecorderError = (reason) => {
     const messages = {
-      NotAllowedError:"无法访问电脑麦克风，请在 Windows 隐私设置中允许 Vico Keyboard 使用麦克风",
+      NotAllowedError:"无法访问电脑麦克风，请在 Windows 隐私设置中允许 VicoDeck 使用麦克风",
       NotFoundError:"没有找到可用的电脑麦克风",
       OverconstrainedError:"所选麦克风已不可用，请重新选择设备",
       NotReadableError:"麦克风正被其他程序独占，或设备暂时不可用"

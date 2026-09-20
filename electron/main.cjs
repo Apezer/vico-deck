@@ -13,6 +13,11 @@ const {
 const { startSystemMonitor } = require("./system-monitor.cjs");
 const { DoubaoService, FORMAT_BY_EXTENSION } = require("./doubao-service.cjs");
 const { CredentialStore } = require("./credential-store.cjs");
+const { autoUpdater } = require("electron-updater");
+const { UpdateService } = require("./update-service.cjs");
+
+// 为 Windows 任务栏和通知中心设置稳定的应用标识，避免沿用 Electron 默认分组。
+if (process.platform === "win32") app.setAppUserModelId("com.vico.keyboard");
 
 let mainWindow;
 let tray;
@@ -32,6 +37,9 @@ let speechShortcutRegistered = false;
 let activeSpeechShortcut = "CommandOrControl+Alt+I";
 let pendingDeviceSelection = null;
 let deviceSelectionSequence = 0;
+let bleBridgeWindow = null;
+let bleBridgeReady = null;
+let updateService;
 const VICO_USB_VENDOR_ID = 0x3343;
 const VICO_USB_PRODUCT_ID = 0x83cf;
 let latestClaudeStatus = {
@@ -165,6 +173,71 @@ function requestDeviceSelection(type, devices, callback) {
   });
 }
 
+/**
+ * 创建只负责 Web Bluetooth 的隐藏窗口。
+ * 物理断线时销毁该窗口，可以连同 Chromium 的失效 GATT 对象一起释放；
+ * 主界面及用户配置不会因此刷新。
+ */
+function createBleBridgeWindow() {
+  if (bleBridgeWindow && !bleBridgeWindow.isDestroyed()) return bleBridgeReady;
+  bleBridgeWindow = new BrowserWindow({
+    width: 320,
+    height: 200,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "ble-preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: false
+    }
+  });
+  bleBridgeWindow.webContents.on("select-bluetooth-device", (event, deviceList, callback) => {
+    event.preventDefault();
+    requestDeviceSelection("bluetooth", deviceList, callback);
+  });
+  bleBridgeReady = new Promise((resolve, reject) => {
+    bleBridgeWindow.webContents.once("did-finish-load", resolve);
+    bleBridgeWindow.webContents.once("did-fail-load", (_event, code, description) => {
+      reject(new Error(`蓝牙后台窗口加载失败 (${code}): ${description}`));
+    });
+  });
+  bleBridgeWindow.on("closed", () => {
+    bleBridgeWindow = null;
+    bleBridgeReady = null;
+    cancelPendingDeviceSelection();
+  });
+  bleBridgeWindow.loadFile(path.join(__dirname, "ble-bridge.html"));
+  return bleBridgeReady;
+}
+
+function destroyBleBridgeWindow() {
+  cancelPendingDeviceSelection();
+  if (bleBridgeWindow && !bleBridgeWindow.isDestroyed()) bleBridgeWindow.destroy();
+  bleBridgeWindow = null;
+  bleBridgeReady = null;
+}
+
+async function runBleBridgeCommand(request) {
+  const allowedCommands = new Set(["restore", "connect", "disconnect", "write"]);
+  if (!request || !allowedCommands.has(request.type)) throw new Error("蓝牙命令无效");
+  if (request.type === "write") {
+    if (!Array.isArray(request.packets) || request.packets.length > 64) throw new Error("蓝牙数据无效");
+    request = {
+      type:"write",
+      packets:request.packets.map((packet) => {
+        if (!Array.isArray(packet) || packet.length > 512) throw new Error("蓝牙数据包无效");
+        return packet.map((value) => Number(value) & 0xff);
+      })
+    };
+  }
+  await createBleBridgeWindow();
+  const serialized = JSON.stringify(request).replaceAll("\u2028", "\\u2028").replaceAll("\u2029", "\\u2029");
+  return bleBridgeWindow.webContents.executeJavaScript(
+    `window.vicoBleBridge.execute(${serialized})`,
+    true
+  );
+}
+
 function createWindow() {
   const config = readConfig();
   const iconPath = path.join(__dirname, "..", "asserts", "vico-keyboard.ico");
@@ -213,9 +286,9 @@ function createTray() {
   const iconPath = path.join(__dirname, "..", "asserts", "vico-keyboard.png");
   const icon = nativeImage.createFromPath(iconPath).resize({ width: 20, height: 20 });
   tray = new Tray(icon);
-  tray.setToolTip("Vico Keyboard");
+  tray.setToolTip("VicoDeck");
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "打开 Vico Keyboard", click: () => { mainWindow.show(); mainWindow.focus(); } },
+    { label: "打开 VicoDeck", click: () => { mainWindow.show(); mainWindow.focus(); } },
     { type: "separator" },
     { label: "退出", click: () => { isQuitting = true; app.quit(); } }
   ]));
@@ -314,6 +387,8 @@ app.whenReady().then(() => {
 
   createWindow();
   createTray();
+  updateService = new UpdateService({ app, autoUpdater, getWindow:() => mainWindow });
+  updateService.start();
   try {
     registerSpeechShortcut(readConfig().speechShortcut || DEFAULT_SPEECH_SHORTCUT);
   } catch {
@@ -344,6 +419,11 @@ app.whenReady().then(() => {
   );
   // 语音输入页只申请麦克风权限，不允许摄像头等其他媒体权限。
   deviceSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const bluetoothWindow = bleBridgeWindow && webContents === bleBridgeWindow.webContents;
+    if (bluetoothWindow && (permission === "bluetooth" || permission === "bluetoothScanning")) {
+      callback(true);
+      return;
+    }
     const mediaTypes = details?.mediaTypes || [];
     const audioOnly = mediaTypes.length > 0 && mediaTypes.every((type) => type === "audio");
     callback(webContents === mainWindow.webContents && permission === "media" && audioOnly);
@@ -379,6 +459,7 @@ app.on("before-quit", () => {
   claudeStatusServer?.close();
   systemMonitor?.close();
   speechService?.cancel();
+  destroyBleBridgeWindow();
 });
 
 ipcMain.handle("config:get", () => readConfig());
@@ -398,6 +479,14 @@ ipcMain.handle("autostart:set", (_event, enabled) => {
 ipcMain.handle("window:minimize", () => mainWindow.minimize());
 ipcMain.handle("window:hide", () => mainWindow.hide());
 ipcMain.handle("app:version", () => app.getVersion());
+ipcMain.handle("updater:state", () => updateService?.snapshot() || {
+  status:"idle",
+  currentVersion:app.getVersion(),
+  message:"更新服务正在初始化"
+});
+ipcMain.handle("updater:check", () => updateService.check());
+ipcMain.handle("updater:download", () => updateService.download());
+ipcMain.handle("updater:install", () => updateService.install());
 ipcMain.handle("device:select", (_event, selection) => {
   if (!pendingDeviceSelection || selection?.requestId !== pendingDeviceSelection.requestId) return false;
   const { callback, deviceIds } = pendingDeviceSelection;
@@ -407,6 +496,18 @@ ipcMain.handle("device:select", (_event, selection) => {
     : "";
   callback(deviceId);
   return true;
+});
+ipcMain.handle("ble:command", (event, request) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error("不允许的蓝牙调用来源");
+  return runBleBridgeCommand(request);
+});
+ipcMain.on("ble:bridge-event", (event, value) => {
+  if (!bleBridgeWindow || event.sender !== bleBridgeWindow.webContents) return;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("ble:event", value);
+  if (value?.type === "unexpected-disconnect") {
+    // 先将断线状态送达界面，再在下一轮事件循环释放旧 WebContents。
+    setImmediate(destroyBleBridgeWindow);
+  }
 });
 ipcMain.handle("claude:status:get", () => latestClaudeStatus);
 ipcMain.handle("system:status:get", () => latestSystemStatus);

@@ -1,82 +1,63 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { VicoBleDevice } from "../src/device.js";
 
-class FakeCharacteristic {
-  constructor({ battery = false } = {}) {
-    this.battery = battery;
-    this.properties = { notify:true, write:true };
-    this.listeners = new Map();
-  }
+const calls = [];
+let receiveBridgeEvent = () => {};
+let connected = false;
 
-  async readValue() {
-    return new DataView(Uint8Array.of(this.battery ? 67 : 0).buffer);
-  }
-
-  async startNotifications() { return this; }
-  addEventListener(name, listener) { this.listeners.set(name, listener); }
-  removeEventListener(name, listener) {
-    if (this.listeners.get(name) === listener) this.listeners.delete(name);
-  }
-}
-
-const rx = new FakeCharacteristic();
-const tx = new FakeCharacteristic();
-const battery = new FakeCharacteristic({ battery:true });
-const customService = {
-  getCharacteristic:async (uuid) => uuid.includes("0002-") ? rx : tx
-};
-const batteryService = { getCharacteristic:async () => battery };
-const gatt = {
-  connected:false,
-  connectCount:0,
-  serviceDiscoveryCount:0,
-  failNextServiceDiscovery:false,
-  async connect() { this.connected = true; this.connectCount += 1; return this; },
-  disconnect() {
-    this.connected = false;
-    listeners.get("gattserverdisconnected")?.();
-  },
-  async getPrimaryService(uuid) {
-    if (!uuid.includes("180f")) {
-      this.serviceDiscoveryCount += 1;
-      if (this.failNextServiceDiscovery) {
-        this.failNextServiceDiscovery = false;
-        throw new DOMException("GATT cache is stale", "NetworkError");
+globalThis.window = {
+  vico:{
+    ble:{
+      onEvent(callback) {
+        receiveBridgeEvent = callback;
+        return () => { receiveBridgeEvent = () => {}; };
+      },
+      async command(type, payload = {}) {
+        calls.push({ type, payload });
+        if (type === "restore") return { state:"disconnected" };
+        if (type === "connect") {
+          connected = true;
+          return { state:"connected", name:"Vico Keyboard", batteryPercent:67 };
+        }
+        if (type === "disconnect") {
+          connected = false;
+          return true;
+        }
+        if (type === "write") return connected;
+        throw new Error("unexpected command");
       }
     }
-    return uuid.includes("180f") ? batteryService : customService;
   }
 };
-const listeners = new Map();
-const device = {
-  name:"Vico Keyboard",
-  gatt,
-  addEventListener(name, listener) { listeners.set(name, listener); },
-  removeEventListener(name, listener) {
-    if (listeners.get(name) === listener) listeners.delete(name);
-  }
-};
-
-let chooserCalls = 0;
-Object.defineProperty(globalThis, "navigator", {
-  configurable:true,
-  value:{ bluetooth:{
-    getDevices:async () => [device],
-    requestDevice:async () => { chooserCalls += 1; throw new Error("不应重新扫描已授权设备"); }
-  } }
-});
 
 const statuses = [];
 const connection = new VicoBleDevice((status) => statuses.push(status));
+
+await connection.restore();
+assert.equal(statuses.length, 0, "没有已连接设备时不应伪造连接状态");
+
 await connection.request();
-assert.equal(gatt.connectCount, 1);
 assert.equal(statuses.at(-1).state, "connected");
 assert.equal(statuses.at(-1).batteryPercent, 67);
+assert.deepEqual(calls.slice(0, 2).map((call) => call.type), ["restore", "connect"]);
+assert.equal(calls[2].type, "write", "建立通知监听后应发送语音会话握手");
 
 connection.disconnect();
-await connection.request();
-assert.equal(gatt.connectCount, 1, "软件会话重连应复用Windows HID正在共用的物理GATT连接");
-assert.equal(gatt.serviceDiscoveryCount, 1, "软件会话重连应复用已经验证过的Vico服务句柄");
-assert.equal(chooserCalls, 0, "已授权设备重连不应依赖BLE广播扫描");
+await connection.disconnectPromise;
+assert.equal(statuses.at(-1).state, "disconnected");
+assert.deepEqual(calls.slice(-2).map((call) => call.type), ["write", "disconnect"]);
 
-console.log("BLE reconnect passed: app-session resume without breaking the shared HID link");
+await connection.request();
+receiveBridgeEvent({ type:"unexpected-disconnect" });
+assert.equal(statuses.at(-1).state, "disconnected", "物理断线事件应立即清空页面会话");
+
+await connection.request();
+assert.equal(statuses.at(-1).state, "connected", "隐藏窗口重建后页面门面应能再次连接");
+
+const bridgeSource = fs.readFileSync(new URL("../electron/ble-bridge.js", import.meta.url), "utf8");
+const mainSource = fs.readFileSync(new URL("../electron/main.cjs", import.meta.url), "utf8");
+assert.match(bridgeSource, /\^vico keyboard\$\/i/, "蓝牙后台必须只接受精确的设备名称");
+assert.match(mainSource, /setImmediate\(destroyBleBridgeWindow\)/, "物理断线后必须销毁独立蓝牙窗口");
+
+console.log("BLE reconnect passed: isolated bridge, manual pause and physical-disconnect rebuild");

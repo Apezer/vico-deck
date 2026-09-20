@@ -69,6 +69,7 @@ const physicalKeySlots = [
 ];
 
 const RGB_EFFECTS = [
+  { id:"off", name:"关闭", description:"关闭全部 RGB 灯光并在键盘中记住该状态", className:"off" },
   { id:6, name:"常亮", description:"保持你选择的固定颜色", className:"static" },
   { id:0, name:"彩虹流光", description:"连续变化的全色相渐变", className:"rainbow" },
   { id:1, name:"呼吸", description:"柔和明暗循环", className:"breathing" },
@@ -102,7 +103,7 @@ function Toggle({ value, onChange, disabled }) {
 }
 
 function Brand() {
-  return <div className="brand"><div className="brand-mark"><span>V</span></div><div><b>VICO</b><small>KEYBOARD</small></div></div>;
+  return <div className="brand"><div className="brand-mark"><span>V</span></div><div><b>VICO</b><small>DECK</small></div></div>;
 }
 
 function Sidebar({ page, setPage }) {
@@ -406,7 +407,14 @@ function RgbPage({ settings, updateSettings, usbStatus, bleStatus, bleConnecting
   const usbConnected = usbStatus?.state === "connected";
   const bleConnected = bleStatus?.state === "connected";
   const connected = usbConnected || bleConnected;
-  const effect = RGB_EFFECTS.find((item) => item.id === settings.effect) || RGB_EFFECTS[0];
+  // “关闭”复用协议中已有的 enabled 位，不占用新的灯效编号。这样旧版固件也
+  // 能正确熄灯；再次选择任意灯效时会恢复上一次的亮度、速度和颜色。
+  const selectedEffectValue = settings.enabled ? String(settings.effect) : "off";
+  const effect = settings.enabled
+    ? RGB_EFFECTS.find((item) => item.id === settings.effect) || RGB_EFFECTS[1]
+    : RGB_EFFECTS[0];
+  const effectIsOff = !settings.enabled;
+  const effectIsStatic = settings.effect === 6;
   const previewDurationSeconds = Math.max(.35, 2.6 * 100 / settings.speed);
   const previewStyle = {
     "--rgb-brightness":settings.enabled ? Math.max(.25, settings.brightness / 100) : 0,
@@ -438,7 +446,7 @@ function RgbPage({ settings, updateSettings, usbStatus, bleStatus, bleConnecting
       <div className="rgb-preview-card">
         <div className="card-label"><span>灯光实时预览</span><span>8 × WS2812B · GPIO8</span></div>
         <div className={`rgb-product-preview effect-${effect.className} ${settings.enabled ? "enabled" : "disabled"}`} style={previewStyle}>
-          <img src="/rgb-keyboard-layout.png" alt="Vico Keyboard RGB 灯光布局：OLED、八个按键与无灯光旋钮"/>
+          <img src={`${import.meta.env.BASE_URL}rgb-keyboard-layout.png`} alt="Vico Keyboard RGB 灯光布局：OLED、八个按键与无灯光旋钮"/>
           <span className="rgb-led-layer" aria-hidden="true">
             {Array.from({ length:8 }, (_, index) => <i
               className={`rgb-led rgb-led-key-${index + 1}`}
@@ -451,20 +459,24 @@ function RgbPage({ settings, updateSettings, usbStatus, bleStatus, bleConnecting
             />)}
           </span>
         </div>
-        <div className="rgb-preview-meta"><div><span>当前灯效</span><b>{effect.name}</b></div><div><span>亮度</span><b>{settings.enabled ? `${settings.brightness}%` : "OFF"}</b></div><div><span>速度</span><b>{settings.effect === 6 ? "—" : `${settings.speed}%`}</b></div></div>
+        <div className="rgb-preview-meta"><div><span>当前灯效</span><b>{effect.name}</b></div><div><span>亮度</span><b>{settings.enabled ? `${settings.brightness}%` : "OFF"}</b></div><div><span>速度</span><b>{effectIsOff || effectIsStatic ? "—" : `${settings.speed}%`}</b></div></div>
       </div>
 
       <div className="rgb-settings-card">
         <div className="rgb-master-row"><div><b>RGB 灯光</b><span>关闭后键盘会立即熄灭并记住设置</span></div><Toggle value={settings.enabled} onChange={(enabled) => set({ enabled })}/></div>
         <h2>灯光模式</h2>
         <div className="rgb-mode-select">
-          <select aria-label="选择灯光模式" value={settings.effect} onChange={(event) => set({ effect:Number(event.target.value) })}>
+          <select aria-label="选择灯光模式" value={selectedEffectValue} onChange={(event) => {
+            const value = event.target.value;
+            if (value === "off") set({ enabled:false });
+            else set({ effect:Number(value), enabled:true });
+          }}>
             {RGB_EFFECTS.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
           </select>
           <ChevronDown size={15}/>
         </div>
         <p className="rgb-mode-description">{effect.description}</p>
-        {(settings.effect === 1 || settings.effect === 6) && <div className="rgb-color-control">
+        {!effectIsOff && (settings.effect === 1 || settings.effect === 6) && <div className="rgb-color-control">
           <div><label htmlFor="rgb-static-color">{settings.effect === 1 ? "呼吸颜色" : "常亮颜色"}</label><b>{settings.color?.toUpperCase?.() || "#D6FF38"}</b></div>
           <label className="rgb-color-picker" htmlFor="rgb-static-color">
             <input id="rgb-static-color" type="color" value={settings.color || "#D6FF38"} onChange={(event) => set({ color:event.target.value.toUpperCase() })}/>
@@ -472,15 +484,15 @@ function RgbPage({ settings, updateSettings, usbStatus, bleStatus, bleConnecting
           </label>
           <small>{settings.effect === 1 ? "键盘会使用这个颜色完成连续的明暗呼吸。" : "键盘会持续保持这个颜色，直到你修改模式或关闭灯光。"}</small>
         </div>}
-        <div className={`rgb-range-control ${settings.effect === 6 ? "disabled" : ""}`}>
+        <div className={`rgb-range-control ${effectIsOff ? "disabled" : ""}`}>
           <div><label htmlFor="rgb-brightness">亮度</label><b>{settings.brightness}%</b></div>
           <input id="rgb-brightness" className="range" type="range" min="25" max="100" step="1" value={settings.brightness} onChange={(event) => set({ brightness:Number(event.target.value) })}/>
           <small>较低亮度可以明显延长电池续航。</small>
         </div>
-        <div className="rgb-range-control">
+        <div className={`rgb-range-control ${effectIsOff || effectIsStatic ? "disabled" : ""}`}>
           <div><label htmlFor="rgb-speed">动画速度</label><b>{settings.speed}%</b></div>
-          <input disabled={settings.effect === 6} id="rgb-speed" className="range" type="range" min="50" max="200" step="5" value={settings.speed} onChange={(event) => set({ speed:Number(event.target.value) })}/>
-          <small>{settings.effect === 6 ? "常亮模式不需要动画速度。" : "100% 为标准速度；仅影响动态灯效。"}</small>
+          <input disabled={effectIsOff || effectIsStatic} id="rgb-speed" className="range" type="range" min="50" max="200" step="5" value={settings.speed} onChange={(event) => set({ speed:Number(event.target.value) })}/>
+          <small>{effectIsOff ? "关闭模式不使用动画速度。" : effectIsStatic ? "常亮模式不需要动画速度。" : "100% 为标准速度；仅影响动态灯效。"}</small>
         </div>
         <div className={`rgb-sync-state ${connected ? "online" : ""}`}><i/><span>{connected ? `修改会立即通过 ${usbConnected ? "USB" : "蓝牙 GATT"} 保存到键盘` : "等待连接，设置已保存在软件中"}</span></div>
       </div>
@@ -540,19 +552,51 @@ function shortcutFromEvent(event) {
 function SettingsPage({ config, setConfig, version }) {
   const [capturingShortcut, setCapturingShortcut] = useState(false);
   const [shortcutMessage, setShortcutMessage] = useState("");
+  const [updateState, setUpdateState] = useState({
+    status:"idle", percent:0, message:"点击按钮检查新版本"
+  });
   const shortcutButton = useRef(null);
   const setAutostart = async (value) => {
     const actual = window.vico ? await window.vico.setAutostart(value) : value;
     setConfig({ ...config, startAtLogin:actual });
   };
   const rows = [
-    ["开机时启动 Vico Keyboard", "登录 Windows 后自动在后台运行", config.startAtLogin, setAutostart],
+    ["开机时启动 VicoDeck", "登录 Windows 后自动在后台运行", config.startAtLogin, setAutostart],
     ["关闭窗口时最小化到托盘", "保持按键服务与设备连接", config.closeToTray, (v) => setConfig({ ...config, closeToTray:v })],
     ["启动时隐藏主窗口", "配合开机自启动安静运行", config.launchMinimized, (v) => setConfig({ ...config, launchMinimized:v })]
   ];
   useEffect(() => {
     if (capturingShortcut) shortcutButton.current?.focus();
   }, [capturingShortcut]);
+  useEffect(() => {
+    window.vico?.updates?.getState?.().then(setUpdateState).catch(() => {});
+    return window.vico?.updates?.onStateChanged?.(setUpdateState);
+  }, []);
+
+  const updateBusy = updateState.status === "checking" || updateState.status === "downloading";
+  const updateButtonLabel = updateState.status === "checking" ? "检查中…"
+    : updateState.status === "available" ? `下载 ${updateState.version || "新版本"}`
+    : updateState.status === "downloading" ? `下载中 ${Math.round(updateState.percent || 0)}%`
+    : updateState.status === "downloaded" ? "重启并安装"
+    : updateState.status === "error" ? "重新检查"
+    : "检查更新";
+  const handleUpdate = async () => {
+    try {
+      if (updateState.status === "available") {
+        setUpdateState(await window.vico.updates.download());
+      } else if (updateState.status === "downloaded") {
+        await window.vico.updates.install();
+      } else {
+        setUpdateState(await window.vico.updates.check());
+      }
+    } catch (error) {
+      setUpdateState((current) => ({
+        ...current,
+        status:"error",
+        message:error.message || "更新操作失败"
+      }));
+    }
+  };
 
   const saveShortcut = async (shortcut) => {
     setShortcutMessage("正在注册快捷键…");
@@ -599,7 +643,7 @@ function SettingsPage({ config, setConfig, version }) {
       </div>
     </div>
     <div className="settings-block"><h2>设备与更新</h2>
-      <div className="setting-row"><div><b>Vico Keyboard Desktop</b><span>版本 {version} · Electron / WebHID</span></div><button className="secondary"><RefreshCw size={15}/>检查更新</button></div>
+      <div className="setting-row update-setting"><div><b>VicoDeck</b><span>版本 {version} · Electron / WebHID</span><small className={`update-status ${updateState.status}`}>{updateState.message}</small>{updateState.status === "downloading" && <div className="update-progress"><i style={{ width:`${updateState.percent || 0}%` }}/></div>}</div><button className="secondary" disabled={updateBusy} onClick={handleUpdate}><RefreshCw className={updateBusy ? "spin" : ""} size={15}/>{updateButtonLabel}</button></div>
       <div className="setting-row"><div><b>设备通信协议</b><span>64-byte HID Feature Report · 草案 v1</span></div><span className="tag">开发模式</span></div>
     </div>
   </section>;

@@ -352,6 +352,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .setting-row.compact { min-height:57px; }
 .speech-shortcut-setting small { display:block;margin-top:6px;color:#a5b86a;font-size:8px; }
 .speech-shortcut-actions { display:flex;align-items:center;gap:8px; }
+.update-setting>div:first-child { flex:1;min-width:0; }
+.update-status { display:block;margin-top:6px;color:#8c96a1;font-size:8px; }
+.update-status.available,.update-status.downloaded,.update-status.up-to-date { color:#a9c95b; }
+.update-status.error { color:#ff8585; }
+.update-progress { width:min(360px,100%);height:4px;margin-top:8px;background:#242a32;border-radius:4px;overflow:hidden; }
+.update-progress i { display:block;height:100%;background:var(--accent);box-shadow:0 0 8px var(--accent);transition:width .15s linear; }
 .shortcut-capture { min-width:150px;height:38px;padding:0 14px;border:1px solid #59652f;border-bottom-width:3px;border-radius:6px;background:#171c22;color:var(--accent);font:700 10px "Microsoft YaHei UI",sans-serif;cursor:pointer;outline:none; }
 .shortcut-capture:hover,.shortcut-capture:focus { border-color:var(--accent);box-shadow:0 0 0 2px rgba(214,255,56,.08); }
 .shortcut-capture.capturing { border-color:#78a9ff;color:#9fc0ff;animation:speech-capture-pulse 1.2s ease-in-out infinite; }
