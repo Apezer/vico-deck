@@ -9,3 +9,7 @@ release/
 coverage/
 .playwright-cli/
 output/
+
+# 本地界面比对和设计验收产物，不参与源码发布。
+design-qa.md
+rgb-layout-*.png
