@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  BatteryMedium, Bluetooth, ChevronDown, CircleHelp, Command, Cpu, Download,
+  AlertTriangle, BatteryMedium, Bluetooth, ChevronDown, CircleHelp, Command, Cpu, Download,
   Eraser, Gauge, Keyboard, Layers3, Mic, Monitor, Moon, MoreHorizontal, Palette, Pencil,
   Play, Plus, Power, RefreshCw, Rocket, Save, Settings, SlidersHorizontal,
   Sparkles, Sun, Trash2, Unplug, Upload, Usb, Volume2, WifiOff, X
@@ -8,6 +8,7 @@ import {
 import { VicoBleDevice, VicoDevice } from "./device";
 import ClaudePage from "./ClaudePage";
 import SpeechPage from "./SpeechPage";
+import FirmwarePage from "./FirmwarePage";
 import GlobalSpeechController from "./GlobalSpeechController";
 import LiveOledCanvas from "./LiveOledCanvas";
 import OledPixelCanvas from "./OledPixelCanvas";
@@ -108,15 +109,15 @@ function Brand() {
 
 function Sidebar({ page, setPage }) {
   const items = [
-    ["keys", Keyboard, "按键配置"], ["oled", Monitor, "OLED 显示"], ["rgb", Palette, "RGB 灯光"], ["profiles", Layers3, "配置文件"], ["claude", Cpu, "Claude Code"], ["speech", Mic, "语音识别"], ["settings", Settings, "设置"]
+    ["keys", Keyboard, "按键配置"], ["oled", Monitor, "OLED 显示"], ["rgb", Palette, "RGB 灯光"], ["profiles", Layers3, "配置文件"], ["firmware", Download, "固件升级"], ["claude", Cpu, "Claude Code"], ["speech", Mic, "语音识别"], ["settings", Settings, "设置"]
   ];
   return <aside className="sidebar">
     <Brand />
     <nav>
       <p>设备</p>
-      {items.slice(0, 4).map(([id, Icon, label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}><Icon size={18}/><span>{label}</span></button>)}
+      {items.slice(0, 5).map(([id, Icon, label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}><Icon size={18}/><span>{label}</span></button>)}
       <p>应用</p>
-      {items.slice(4).map(([id, Icon, label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}><Icon size={18}/><span>{label}</span></button>)}
+      {items.slice(5).map(([id, Icon, label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}><Icon size={18}/><span>{label}</span></button>)}
     </nav>
     <div className="sidebar-help"><CircleHelp size={17}/><div><b>需要帮助？</b><span>查看连接与固件指南</span></div></div>
   </aside>;
@@ -143,28 +144,42 @@ function Header({ status, connect, disconnect, syncing, sync }) {
 function DeviceSelectionDialog({ request, onSelect }) {
   if (!request) return null;
   const bluetooth = request.type === "bluetooth";
+  const serial = request.type === "serial";
   const formatId = (value) => Number(value || 0).toString(16).toUpperCase().padStart(4, "0");
   return <div className="device-picker-backdrop" onMouseDown={() => onSelect("")}>
     <section className="device-picker" onMouseDown={(event) => event.stopPropagation()}>
       <div className="device-picker-head">
         <div className="device-picker-icon">{bluetooth ? <Bluetooth/> : <Usb/>}</div>
-        <div><span>{bluetooth ? "BLUETOOTH GATT" : "USB WEBHID"}</span><h2>选择要连接的设备</h2></div>
+        <div><span>{bluetooth ? "BLUETOOTH GATT" : serial ? "USB FIRMWARE" : "USB WEBHID"}</span><h2>{serial ? "选择固件下载端口" : "选择要连接的设备"}</h2></div>
         <button className="ghost square" onClick={() => onSelect("")}><X size={19}/></button>
       </div>
       <p className="device-picker-help">
-        {bluetooth ? "这里只显示名称为 Vico Keyboard 的设备。" : "这里只显示通过 Vico 产品名和 USB VID/PID 双重验证的设备，其他键盘会被自动忽略。"}
+        {bluetooth
+          ? "这里只显示名称为 Vico Keyboard 的设备。"
+          : serial
+            ? "这里只显示 Espressif 或 Vico 的 USB 串口；选择后还会验证芯片必须为 ESP32-S3。"
+            : "这里只显示通过 Vico 产品名和 USB VID/PID 双重验证的设备，其他键盘会被自动忽略。"}
       </p>
+      {serial && <div className="device-picker-port-tip" role="note">
+        <AlertTriangle aria-hidden="true"/>
+        <div>
+          <b>找不到烧录端口？</b>
+          <span>请关闭小键盘电源，等待几秒后重新打开，再重新点击“开始 USB 升级”。</span>
+        </div>
+      </div>}
       <div className="device-picker-list">
         {request.devices.length === 0 && <div className="device-picker-empty">
           {bluetooth
             ? "正在扫描 Vico Keyboard…请确认模式拨片位于 BLE、键盘正在广播，并且 Windows 蓝牙已开启。"
+            : serial
+              ? "没有发现下载端口。请先将模式拨片切到蓝牙侧并重新插拔 USB；仍未出现时，再按住 BOOT、短按 RST。"
             : "没有发现 Vico Keyboard，请确认模式与连接状态，并重新插拔设备。"}
         </div>}
         {request.devices.map((device) => <button key={device.id} onClick={() => onSelect(device.id)}>
-          <span className="device-choice-icon">{bluetooth ? <Bluetooth/> : <Keyboard/>}</span>
+          <span className="device-choice-icon">{bluetooth ? <Bluetooth/> : serial ? <Usb/> : <Keyboard/>}</span>
           <span className="device-choice-copy">
             <b>{device.name}</b>
-            <small>{bluetooth ? `设备 ID · ${device.id.slice(-8)}` : `VID ${formatId(device.vendorId)} · PID ${formatId(device.productId)}`}</small>
+            <small>{bluetooth ? `设备 ID · ${device.id.slice(-8)}` : `${serial && device.portName ? `${device.portName} · ` : ""}VID ${formatId(device.vendorId)} · PID ${formatId(device.productId)}`}</small>
           </span>
           {device.recommended ? <em>VICO</em> : <small>其他设备</small>}
         </button>)}
@@ -918,6 +933,13 @@ export default function App() {
     }
     catch (error) { setToast(error.message); }
   };
+  const prepareFirmwareFlash = async () => {
+    // WebHID/Web Bluetooth 句柄可能阻止设备重新枚举为下载端口；烧录前主动释放。
+    await Promise.allSettled([
+      deviceRef.current?.disconnect?.(),
+      bleDeviceRef.current?.disconnect?.()
+    ]);
+  };
 
   return <><GlobalSpeechController/><div className="app-shell">
     <Sidebar page={page} setPage={setPage}/>
@@ -956,6 +978,7 @@ export default function App() {
           onDisconnectBle={disconnectBle}
         />}
         {page === "profiles" && <ProfilesPage config={config} status={status} syncing={syncing} onSelectProfile={selectProfile} onSyncCurrent={sync} onSyncAll={syncAll}/>}
+        {page === "firmware" && <FirmwarePage onPrepareFlash={prepareFirmwareFlash}/>}
         {page === "claude" && <ClaudePage claudeStatus={claudeStatus} usbStatus={status} bleStatus={bleStatus} hooksState={hooksState} activity={activity} connecting={bleConnecting} installing={hooksInstalling} onConnect={connectBle} onDisconnect={disconnectBle} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
         {page === "speech" && <SpeechPage deviceEvent={voiceDeviceEvent} usbStatus={status} bleStatus={bleStatus} onConnectBle={connectBle} connecting={bleConnecting}/>}
         {page === "settings" && <SettingsPage config={config} setConfig={setConfig} version={version}/>}

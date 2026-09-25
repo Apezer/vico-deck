@@ -25,6 +25,8 @@
   [五预设协议](docs/KEY_PROFILE_PROTOCOL.md)
   ·
   [OLED 运行时协议](docs/OLED_RUNTIME_PROTOCOL.md)
+  ·
+  [固件升级说明](docs/FIRMWARE_UPDATE.md)
 </div>
 
 ---
@@ -89,6 +91,19 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 - 可选开机自启动
 - 自动恢复已授权的蓝牙设备
 - 深色原生风格界面
+
+### USB 固件升级
+
+- 可从下拉框选择云端的 Vico Keyboard 固件版本
+- 云端固件是默认入口，并按照云端目录定义自动决定烧录范围
+- 本地快速升级可直接选择一个应用固件 BIN 文件
+- 本地完整烧录可选择包含四个分段 BIN 镜像的文件夹
+- 使用 Espressif 官方 `esptool-js`，无需额外安装 Python 或 PlatformIO
+- 升级前将模式拨片切换到蓝牙侧，避免 USB HID 占用下载端口
+- 只显示 Espressif/Vico USB 串口，并在写入前验证芯片必须为 ESP32-S3
+- 镜像下载后执行 SHA-256 校验，写入后执行设备端 MD5 校验
+- 沿用 PlatformIO 分段烧录布局，升级时保留 NVS 中的按键、OLED 与 RGB 设置
+- 当前安装包内置 Vico Keyboard 固件 `1.0.0`，服务器目录不可用时仍可离线升级
 
 ## 快速开始
 
@@ -206,7 +221,7 @@ Windows 安装包会生成在 `release` 目录。
 | --- | --- |
 | 桌面运行时 | Electron |
 | 用户界面 | React + Vite |
-| 设备通信 | Web Bluetooth + WebHID |
+| 设备通信 | Web Bluetooth + WebHID + Web Serial |
 | 后台服务 | Node.js HTTP + Electron IPC |
 | Claude Code 集成 | Hooks + PowerShell bridge |
 | 安装包 | electron-builder + NSIS |

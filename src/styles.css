@@ -125,6 +125,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .device-picker-icon { width:42px;height:42px;border:1px solid #353d47;border-radius:9px;background:#191e25;color:var(--accent);display:grid;place-items:center; }
 .device-picker-icon svg { width:19px; }
 .device-picker-help { margin:0;padding:14px 22px;color:#747d88;font-size:9px;line-height:1.6;background:#0d1014; }
+.device-picker-port-tip { margin:14px 18px 4px;padding:13px 14px;border:1px solid rgba(255,187,74,.42);border-radius:9px;background:linear-gradient(135deg,rgba(255,174,48,.13),rgba(255,174,48,.045));display:flex;align-items:flex-start;gap:11px;box-shadow:inset 3px 0 0 #e7ac54; }
+.device-picker-port-tip>svg { width:19px;height:19px;flex:0 0 auto;color:#ffc66d;filter:drop-shadow(0 0 7px rgba(255,187,74,.25)); }
+.device-picker-port-tip b,.device-picker-port-tip span { display:block; }
+.device-picker-port-tip b { margin-bottom:4px;color:#ffd18a;font-size:10px; }
+.device-picker-port-tip span { color:#aa9472;font-size:9px;line-height:1.55; }
 .device-picker-list { min-height:96px;overflow:auto;padding:10px;display:grid;gap:7px; }
 .device-picker-list>button { width:100%;min-height:66px;border:1px solid #282f38;border-radius:9px;background:#15191f;padding:11px 13px;display:flex;align-items:center;gap:12px;text-align:left;cursor:pointer; }
 .device-picker-list>button:hover { border-color:#5a6537;background:rgba(214,255,56,.045); }
@@ -397,6 +402,109 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 @keyframes toast { 0%{opacity:0;transform:translate(-50%,12px)} 10%,85%{opacity:1;transform:translate(-50%,0)} 100%{opacity:0} }
 .spin { animation:spin 1s linear infinite; } @keyframes spin{to{transform:rotate(360deg)}}
 .loading { height:100vh;display:grid;place-content:center;gap:20px;justify-items:center;color:#737b86;font-size:11px; }
+
+/* 固件中心：版本选择、烧录状态和下载模式引导。 */
+.firmware-page { max-width:1180px; }
+.firmware-heading { display:flex;align-items:center;gap:14px; }
+.firmware-heading>div:nth-child(2) { flex:1; }
+.firmware-refresh { margin-left:auto; }
+.firmware-grid { display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;align-items:start; }
+.firmware-main-column,.firmware-side-column { display:grid;gap:16px; }
+.firmware-card { border:1px solid #252c34;background:#11151a;border-radius:12px;padding:22px; }
+.firmware-card-head { display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px; }
+.firmware-source-tabs { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:22px;padding:4px;border:1px solid #272e36;border-radius:9px;background:#0b0f13; }
+.firmware-source-tabs button { min-height:38px;border:0;border-radius:6px;background:transparent;color:#707b86;font-size:9px;font-weight:650;display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer; }
+.firmware-source-tabs button:hover:not(:disabled) { color:#c5ccd3;background:#151a20; }
+.firmware-source-tabs button.active { color:var(--accent);background:#1a2026;box-shadow:inset 0 0 0 1px rgba(214,255,56,.14); }
+.firmware-source-tabs button:disabled { cursor:not-allowed;opacity:.55; }
+.firmware-source-tabs svg { width:15px; }
+.firmware-write-mode { display:flex;align-items:center;justify-content:space-between;gap:18px;margin:-7px 0 22px;padding:13px 14px;border:1px solid #272e36;border-radius:9px;background:#0d1115; }
+.firmware-write-mode>div:first-child span,.firmware-write-mode>div:first-child small { display:block; }
+.firmware-write-mode>div:first-child span { color:#cfd5db;font-size:9px;font-weight:650;margin-bottom:3px; }
+.firmware-write-mode>div:first-child small { color:#626d78;font-size:8px; }
+.firmware-write-mode>div:last-child { display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:275px; }
+.firmware-write-mode button { border:1px solid #303842;border-radius:6px;background:#14191f;color:#7d8792;padding:8px 12px;text-align:left;cursor:pointer; }
+.firmware-write-mode button b,.firmware-write-mode button small { display:block; }
+.firmware-write-mode button b { color:#aeb6bf;font-size:9px;margin-bottom:2px; }
+.firmware-write-mode button small { color:#606b76;font-size:7px; }
+.firmware-write-mode button.active { border-color:rgba(214,255,56,.32);background:rgba(214,255,56,.055); }
+.firmware-write-mode button.active b { color:var(--accent); }
+.firmware-write-mode button:disabled { cursor:not-allowed;opacity:.55; }
+.firmware-source-head { margin-bottom:13px; }
+.firmware-card-head span { display:block;color:var(--accent);font-size:8px;letter-spacing:.16em;margin-bottom:5px; }
+.firmware-card-head h2 { margin:0;font:600 15px "Segoe UI Variable",sans-serif; }
+.firmware-card-head>em { color:#93a161;background:rgba(214,255,56,.06);border:1px solid rgba(214,255,56,.17);border-radius:100px;padding:5px 8px;font-size:8px;font-style:normal; }
+.firmware-card-head>svg { color:#68727d;width:20px; }
+.firmware-version-select { display:block;position:relative; }
+.firmware-version-select select { width:100%;appearance:none;border:1px solid #343c46;background:#0b0f13;color:#e6ebef;border-radius:8px;padding:12px 42px 12px 13px;font-size:11px;outline:none;cursor:pointer; }
+.firmware-version-select select:focus { border-color:#718334;box-shadow:0 0 0 2px rgba(214,255,56,.07); }
+.firmware-version-select svg { position:absolute;right:13px;top:50%;transform:translateY(-50%);color:#707a86;pointer-events:none; }
+.local-folder-button { width:100%;min-height:42px;display:flex;align-items:center;justify-content:center;gap:8px; }
+.local-folder-button svg { width:16px; }
+.local-folder-help { margin:9px 2px 0;color:#66717c;font-size:8px;line-height:1.55; }
+.local-release-detail .release-title>div:nth-child(2) { min-width:0; }
+.local-release-detail .release-title span { white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.release-detail { margin-top:14px;border:1px solid #292f37;background:#0d1115;border-radius:9px;padding:16px; }
+.release-title { display:flex;align-items:center;gap:11px; }
+.release-chip { width:38px;height:38px;border-radius:8px;display:grid;place-items:center;color:var(--accent);background:rgba(214,255,56,.08);border:1px solid rgba(214,255,56,.13); }
+.release-chip svg { width:19px; }
+.release-title>div:nth-child(2) { flex:1; }
+.release-title b,.release-title span { display:block; }
+.release-title b { color:#e5e9ed;font-size:11px;margin-bottom:3px; }
+.release-title span { color:#65707b;font-size:8px; }
+.release-title small { color:var(--accent);font:700 11px "Segoe UI Variable",sans-serif; }
+.release-detail>p { margin:14px 0 11px;color:#8a949f;font-size:9px;line-height:1.65; }
+.release-detail ul { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 14px;padding:0;margin:0;list-style:none; }
+.release-detail li { display:flex;align-items:flex-start;gap:6px;color:#aeb6bf;font-size:8px;line-height:1.5; }
+.release-detail li svg { flex:0 0 auto;color:var(--accent);margin-top:1px; }
+.release-integrity { display:flex;align-items:center;gap:7px;margin-top:14px;padding-top:12px;border-top:1px solid #242b32;color:#6f7a85;font-size:8px; }
+.release-integrity svg { color:#809a3d;flex:0 0 auto; }
+.firmware-loading,.firmware-inline-error { min-height:88px;display:flex;align-items:center;justify-content:center;gap:8px;color:#7c8792;font-size:9px; }
+.firmware-loading svg { width:16px;color:var(--accent); }
+.firmware-inline-error { color:#ff8585; }
+.flash-card { transition:border-color .2s,box-shadow .2s; }
+.flash-card.phase-flashing { border-color:rgba(214,255,56,.35);box-shadow:0 0 24px rgba(214,255,56,.04); }
+.flash-card.phase-success { border-color:rgba(119,205,124,.38); }
+.flash-card.phase-error { border-color:rgba(255,100,100,.33); }
+.flash-status-head { display:flex;align-items:center;gap:12px; }
+.flash-status-icon { width:40px;height:40px;border-radius:9px;background:#1a2026;color:var(--accent);display:grid;place-items:center;flex:0 0 auto; }
+.flash-status-icon svg { width:19px; }
+.phase-success .flash-status-icon { color:#7bd180;background:rgba(74,184,92,.1); }
+.phase-error .flash-status-icon { color:#ff7777;background:rgba(255,85,85,.08); }
+.flash-status-head>div:nth-child(2) { flex:1;min-width:0; }
+.flash-status-head span,.flash-status-head small,.flash-status-head em { display:block; }
+.flash-status-head span { color:#dde2e7;font-size:11px;font-weight:650;margin-bottom:4px; }
+.flash-status-head small { color:#6d7782;font-size:8px;line-height:1.45; }
+.flash-status-head em { color:#8fa152;font-size:8px;font-style:normal;margin-top:4px; }
+.flash-status-head>b { color:var(--accent);font:700 13px "Segoe UI Variable",sans-serif; }
+.firmware-progress { height:6px;margin:17px 0;background:#242b32;border-radius:10px;overflow:hidden; }
+.firmware-progress i { display:block;width:0;height:100%;background:linear-gradient(90deg,#879f2b,var(--accent));box-shadow:0 0 9px rgba(214,255,56,.45);transition:width .15s linear; }
+.firmware-flash-button { width:100%;min-height:42px;border:0;border-radius:7px;background:var(--accent);color:#141700;font-size:10px;font-weight:750;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer; }
+.firmware-flash-button:hover:not(:disabled) { filter:brightness(1.07);box-shadow:0 0 22px rgba(214,255,56,.12); }
+.firmware-flash-button:disabled { opacity:.48;cursor:not-allowed; }
+.firmware-flash-button svg { width:16px; }
+.flash-button-help { margin:8px 0 0;text-align:center;color:#59636e;font-size:8px; }
+.firmware-log { margin-top:14px;border-top:1px solid #252c34;padding-top:11px; }
+.firmware-log summary { color:#818b96;font-size:8px;cursor:pointer;user-select:none; }
+.firmware-log pre { max-height:180px;overflow:auto;margin:9px 0 0;padding:11px;border-radius:6px;background:#080b0e;color:#899691;font:8px/1.55 Consolas,monospace;white-space:pre-wrap;word-break:break-word; }
+.boot-guide ol { list-style:none;margin:0;padding:0;display:grid; }
+.boot-guide li { display:flex;align-items:flex-start;gap:11px;padding:13px 0;border-top:1px solid #252c33; }
+.boot-guide li:first-child { border-top:0;padding-top:2px; }
+.boot-guide li>i { width:24px;height:24px;display:grid;place-items:center;border:1px solid #3c454f;border-radius:50%;color:var(--accent);font:700 9px "Segoe UI Variable",sans-serif;font-style:normal;flex:0 0 auto; }
+.boot-guide li b,.boot-guide li span { display:block; }
+.boot-guide li b { color:#cfd5dc;font-size:9px;margin-bottom:4px; }
+.boot-guide li span { color:#65707b;font-size:8px;line-height:1.5; }
+.firmware-warning { display:flex;align-items:flex-start;gap:10px;padding:14px;border:1px solid rgba(255,187,74,.22);border-radius:9px;background:rgba(255,174,48,.045); }
+.firmware-warning>svg { width:17px;flex:0 0 auto;color:#e7ac54; }
+.firmware-warning b,.firmware-warning span { display:block; }
+.firmware-warning b { color:#d6b77d;font-size:9px;margin-bottom:4px; }
+.firmware-warning span { color:#7c705e;font-size:8px;line-height:1.55; }
+.firmware-target { padding:15px 16px;border:1px solid #282f37;border-radius:9px;background:#0d1115; }
+.firmware-target span,.firmware-target b,.firmware-target small { display:block; }
+.firmware-target span { color:#5f6974;font-size:8px;letter-spacing:.13em;text-transform:uppercase; }
+.firmware-target b { color:#e0e5ea;font-size:12px;margin:6px 0 4px; }
+.firmware-target small { color:#66717c;font-size:8px;line-height:1.5; }
+@media(max-width:1050px){.firmware-grid{grid-template-columns:1fr}.firmware-side-column{grid-template-columns:1fr 1fr}.boot-guide{grid-row:span 2}.firmware-write-mode{align-items:flex-start;flex-direction:column}.firmware-write-mode>div:last-child{width:100%;min-width:0}}
 @media(max-width:1100px){.app-shell{grid-template-columns:205px 1fr}.top-actions{margin-right:105px}.keyboard-shell{width:330px}.key-layout{gap:8px}.device-hero{grid-template-columns:48% 52%}.oled-page-heading,.rgb-page-heading{align-items:flex-start;flex-wrap:wrap}.oled-gatt-control,.rgb-connection{width:100%;margin-left:64px;justify-content:space-between}.oled-grid,.rgb-layout{grid-template-columns:1fr}.oled-device{height:280px}}
 
 .claude-page { max-width:1200px; }

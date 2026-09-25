@@ -19,6 +19,11 @@ contextBridge.exposeInMainWorld("vico", {
       return () => ipcRenderer.removeListener("updater:state-changed", listener);
     }
   },
+  firmware: {
+    getCatalog: (refresh = false) => ipcRenderer.invoke("firmware:catalog", refresh),
+    getBundle: (version, writeMode) => ipcRenderer.invoke("firmware:bundle", version, writeMode),
+    selectLocal: (writeMode) => ipcRenderer.invoke("firmware:local-source", writeMode)
+  },
   selectDevice: (requestId, deviceId) => ipcRenderer.invoke("device:select", { requestId, deviceId }),
   onDeviceSelection: (callback) => {
     const listener = (_event, request) => callback(request);

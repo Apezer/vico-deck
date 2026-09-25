@@ -15,6 +15,8 @@ const { DoubaoService, FORMAT_BY_EXTENSION } = require("./doubao-service.cjs");
 const { CredentialStore } = require("./credential-store.cjs");
 const { autoUpdater } = require("electron-updater");
 const { UpdateService } = require("./update-service.cjs");
+const { FirmwareService } = require("./firmware-service.cjs");
+const { parseUsbId, isVicoFirmwarePort } = require("./usb-device.cjs");
 
 // 为 Windows 任务栏和通知中心设置稳定的应用标识，避免沿用 Electron 默认分组。
 if (process.platform === "win32") app.setAppUserModelId("com.vico.keyboard");
@@ -40,6 +42,7 @@ let deviceSelectionSequence = 0;
 let bleBridgeWindow = null;
 let bleBridgeReady = null;
 let updateService;
+let firmwareService;
 const VICO_USB_VENDOR_ID = 0x3343;
 const VICO_USB_PRODUCT_ID = 0x83cf;
 let latestClaudeStatus = {
@@ -127,21 +130,30 @@ function cancelPendingDeviceSelection() {
 function requestDeviceSelection(type, devices, callback) {
   const allowedDevices = devices.filter((device) => {
     if (type === "bluetooth") return /^vico keyboard$/i.test(device.deviceName || "");
+    if (type === "serial") return isVicoFirmwarePort(device);
     return Number(device.vendorId) === VICO_USB_VENDOR_ID
       && Number(device.productId) === VICO_USB_PRODUCT_ID
       && /^vico keyboard$/i.test(device.productName || "");
   });
   const normalized = allowedDevices.map((device) => {
     const isBluetooth = type === "bluetooth";
-    const name = isBluetooth ? device.deviceName : device.productName;
-    const vendorId = Number(device.vendorId || 0);
-    const productId = Number(device.productId || 0);
+    const isSerial = type === "serial";
+    const name = isBluetooth
+      ? device.deviceName
+      : isSerial
+        ? device.displayName || device.portName
+        : device.productName;
+    const vendorId = parseUsbId(device.vendorId);
+    const productId = parseUsbId(device.productId);
     return {
-      id: device.deviceId,
-      name: name || (isBluetooth ? "未命名蓝牙设备" : "未命名 HID 设备"),
+      id:isSerial ? device.portId : device.deviceId,
+      name:name || (isBluetooth ? "未命名蓝牙设备" : isSerial ? "ESP32-S3 下载端口" : "未命名 HID 设备"),
+      portName:isSerial ? device.portName || "" : "",
       vendorId,
       productId,
-      recommended: /vico keyboard|vico/i.test(name || "")
+      recommended:isSerial
+        ? isVicoFirmwarePort(device) || /vico|esp32/i.test(name || "")
+        : /vico keyboard|vico/i.test(name || "")
     };
   }).sort((a, b) => Number(b.recommended) - Number(a.recommended));
 
@@ -389,6 +401,7 @@ app.whenReady().then(() => {
   createTray();
   updateService = new UpdateService({ app, autoUpdater, getWindow:() => mainWindow });
   updateService.start();
+  firmwareService = new FirmwareService();
   try {
     registerSpeechShortcut(readConfig().speechShortcut || DEFAULT_SPEECH_SHORTCUT);
   } catch {
@@ -412,15 +425,20 @@ app.whenReady().then(() => {
   // WebHID 访问仅限用户明确选择的设备。
   const deviceSession = mainWindow.webContents.session;
   deviceSession.setPermissionCheckHandler((_wc, permission) =>
-    permission === "hid" || permission === "bluetooth" || permission === "bluetoothScanning" || permission === "media"
+    permission === "hid" || permission === "serial" || permission === "bluetooth" ||
+      permission === "bluetoothScanning" || permission === "media"
   );
   deviceSession.setDevicePermissionHandler((details) =>
-    details.deviceType === "hid" || details.deviceType === "bluetooth"
+    details.deviceType === "hid" || details.deviceType === "serial" || details.deviceType === "bluetooth"
   );
   // 语音输入页只申请麦克风权限，不允许摄像头等其他媒体权限。
   deviceSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
     const bluetoothWindow = bleBridgeWindow && webContents === bleBridgeWindow.webContents;
     if (bluetoothWindow && (permission === "bluetooth" || permission === "bluetoothScanning")) {
+      callback(true);
+      return;
+    }
+    if (webContents === mainWindow.webContents && permission === "serial") {
       callback(true);
       return;
     }
@@ -431,6 +449,14 @@ app.whenReady().then(() => {
   deviceSession.on("select-hid-device", (event, details, callback) => {
     event.preventDefault();
     requestDeviceSelection("usb", details.deviceList, callback);
+  });
+  deviceSession.on("select-serial-port", (event, portList, webContents, callback) => {
+    event.preventDefault();
+    if (webContents !== mainWindow.webContents) {
+      callback("");
+      return;
+    }
+    requestDeviceSelection("serial", portList, callback);
   });
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -487,6 +513,24 @@ ipcMain.handle("updater:state", () => updateService?.snapshot() || {
 ipcMain.handle("updater:check", () => updateService.check());
 ipcMain.handle("updater:download", () => updateService.download());
 ipcMain.handle("updater:install", () => updateService.install());
+ipcMain.handle("firmware:catalog", (event, refresh = false) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error("不允许的固件目录调用来源");
+  return firmwareService.getCatalog(Boolean(refresh));
+});
+ipcMain.handle("firmware:bundle", (event, version, writeMode) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error("不允许的固件下载调用来源");
+  return firmwareService.getBundle(version, writeMode);
+});
+ipcMain.handle("firmware:local-source", async (event, writeMode) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error("不允许的本地固件调用来源");
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title:writeMode === "quick" ? "选择要写入 0x10000 的 BIN 固件" : "选择包含四个 BIN 镜像的文件夹",
+    properties:writeMode === "quick" ? ["openFile", "dontAddToRecent"] : ["openDirectory", "dontAddToRecent"],
+    filters:writeMode === "quick" ? [{ name:"ESP32 固件", extensions:["bin"] }] : undefined
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return firmwareService.getLocalBundle(result.filePaths[0], writeMode);
+});
 ipcMain.handle("device:select", (_event, selection) => {
   if (!pendingDeviceSelection || selection?.requestId !== pendingDeviceSelection.requestId) return false;
   const { callback, deviceIds } = pendingDeviceSelection;

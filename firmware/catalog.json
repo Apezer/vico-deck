@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "device": "Vico Keyboard",
+  "board": "DFRobot FireBeetle 2 ESP32-S3",
+  "generatedAt": "2026-09-23T00:00:00+08:00",
+  "releases": [
+    {
+      "id": "vico-keyboard-standard-1.0.0",
+      "version": "1.0.0",
+      "category": "keyboard",
+      "channel": "stable",
+      "title": "Vico Keyboard 1.0.0",
+      "publishedAt": "2026-09-23",
+      "description": "首个正式固件版本，包含 USB/BLE 双模式、OLED、按键预设、RGB、旋钮、语音采集与低功耗功能。",
+      "notes": [
+        "支持 USB 与 BLE HID 热切换",
+        "支持五套按键预设、OLED 页面和 RGB 灯效",
+        "支持旋钮音量控制与按住录音",
+        "BLE 空闲 10 分钟关闭高耗电外设，20 分钟进入 Deep-sleep"
+      ],
+      "target": {
+        "chip": "ESP32-S3",
+        "flashSize": "keep",
+        "flashMode": "keep",
+        "flashFrequency": "keep"
+      },
+      "images": [
+        {
+          "role": "bootloader",
+          "file": "1.0.0/bootloader.bin",
+          "address": 0,
+          "size": 15104,
+          "sha256": "e01a2300de23c8d601e9f2a37684b5dbc83ae37132d5a8833e23520afd895f92"
+        },
+        {
+          "role": "partitions",
+          "file": "1.0.0/partitions.bin",
+          "address": 32768,
+          "size": 3072,
+          "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1"
+        },
+        {
+          "role": "boot_app0",
+          "file": "1.0.0/boot_app0.bin",
+          "address": 57344,
+          "size": 8192,
+          "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0"
+        },
+        {
+          "role": "application",
+          "file": "1.0.0/firmware.bin",
+          "address": 65536,
+          "size": 774512,
+          "sha256": "5a6b0285a91ee460c0658819e84a060e9cdd6626a8dbd98863735bee539c097e"
+        }
+      ]
+    }
+  ]
+}
