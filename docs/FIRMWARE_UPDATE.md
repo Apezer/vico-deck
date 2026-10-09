@@ -67,5 +67,6 @@ https://update.zheng2005.xyz/firmware/catalog.json
 
 ## 当前内置版本
 
+- `1.0.2`：BLE 语音使用 512 KB PSRAM 环形缓冲区，提升长录音稳定性。
 - `1.0.1`：适配新版 INMP441 接线，并统一设备固件版本上报。
 - `1.0.0`：Vico Keyboard 首个正式固件版本。

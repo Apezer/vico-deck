@@ -18,22 +18,22 @@ async function run() {
 
   assert.equal(catalog.source, "bundled");
   assert.equal(catalog.device, "Vico Keyboard");
-  assert.equal(catalog.releases[0].version, "1.0.1");
-  assert.equal(catalog.releases[0].id, "vico-keyboard-standard-1.0.1");
+  assert.equal(catalog.releases[0].version, "1.0.2");
+  assert.equal(catalog.releases[0].id, "vico-keyboard-standard-1.0.2");
   assert.equal(catalog.releases[0].target.chip, "ESP32-S3");
   assert.equal(catalog.releases[0].target.flashMode, "keep");
   assert.equal(catalog.releases[0].target.flashFrequency, "keep");
   assert.equal(catalog.releases[0].target.flashSize, "keep");
   assert.equal(catalog.releases[0].images.length, 4);
 
-  const bundle = await service.getBundle("vico-keyboard-standard-1.0.1");
-  assert.equal(bundle.version, "1.0.1");
+  const bundle = await service.getBundle("vico-keyboard-standard-1.0.2");
+  assert.equal(bundle.version, "1.0.2");
   assert.equal(bundle.images[0].address, 0x0000);
   assert.equal(bundle.images.at(-1).address, 0x10000);
-  assert.ok(bundle.totalSize > 750000);
+  assert.ok(bundle.totalSize > 650000);
   assert.ok(bundle.images.every((image) => Buffer.from(image.data, "base64").length === image.size));
 
-  const quickBundle = await service.getBundle("vico-keyboard-standard-1.0.1", "quick");
+  const quickBundle = await service.getBundle("vico-keyboard-standard-1.0.2", "quick");
   assert.equal(quickBundle.writeMode, "quick");
   assert.equal(quickBundle.images.length, 1);
   assert.equal(quickBundle.images[0].role, "application");

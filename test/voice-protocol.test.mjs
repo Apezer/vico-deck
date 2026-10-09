@@ -30,4 +30,9 @@ broken.accept(buildVoicePacket(VOICE_PACKET.RECORDING_STARTED, 3, [0x80, 0x3e, 2
 broken.accept(buildVoicePacket(VOICE_PACKET.AUDIO_CHUNK, 3, [...uint32(2), 1, 2]));
 assert.equal(errors.at(-1).type, "error");
 
+const memoryErrors = [];
+const memoryFailure = new VoiceTransferReceiver(event => memoryErrors.push(event));
+memoryFailure.accept(buildVoicePacket(VOICE_PACKET.ERROR, 4, [4]));
+assert.match(memoryErrors.at(-1).message, /PSRAM/);
+
 console.log("Voice protocol passed: recording, chunks, CRC32 and WAV encoding");

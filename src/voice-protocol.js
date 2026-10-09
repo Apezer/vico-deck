@@ -60,7 +60,8 @@ export function encodePcm16Wav(pcm, sampleRate) {
 const errorMessages = {
   1: "键盘麦克风初始化失败，请检查 INMP441 接线",
   2: "音频发送速度不足，键盘缓冲区已满，请缩短录音或改用 USB",
-  3: "没有可用的 Vico 软件连接，请先连接 USB 或蓝牙 GATT"
+  3: "没有可用的 Vico 软件连接，请先连接 USB 或蓝牙 GATT",
+  4: "键盘 PSRAM 初始化或语音缓冲区分配失败"
 };
 
 /**

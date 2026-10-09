@@ -2,8 +2,59 @@
   "schemaVersion": 1,
   "device": "Vico Keyboard",
   "board": "DFRobot FireBeetle 2 ESP32-S3",
-  "generatedAt": "2026-10-09T00:00:00+08:00",
+  "generatedAt": "2026-10-09T12:00:00+08:00",
   "releases": [
+    {
+      "id": "vico-keyboard-standard-1.0.2",
+      "version": "1.0.2",
+      "category": "keyboard",
+      "channel": "stable",
+      "title": "Vico Keyboard 1.0.2",
+      "publishedAt": "2026-10-09",
+      "description": "为蓝牙语音加入 512 KB PSRAM 环形缓冲区，提升长时间录音稳定性。",
+      "notes": [
+        "BLE 语音环形缓冲区由 128 KB 内部 RAM 扩大为 512 KB PSRAM",
+        "完整覆盖最长 15 秒的 16 kHz、16-bit 单声道 PCM 录音",
+        "USB 继续使用 32 KB 内部 RAM 缓冲，不改变原有传输行为",
+        "启用 ESP32-S3 的 8 MB OPI PSRAM，并增加初始化与分配失败保护"
+      ],
+      "target": {
+        "chip": "ESP32-S3",
+        "flashSize": "keep",
+        "flashMode": "keep",
+        "flashFrequency": "keep"
+      },
+      "images": [
+        {
+          "role": "bootloader",
+          "file": "1.0.2/bootloader.bin",
+          "address": 0,
+          "size": 15104,
+          "sha256": "e01a2300de23c8d601e9f2a37684b5dbc83ae37132d5a8833e23520afd895f92"
+        },
+        {
+          "role": "partitions",
+          "file": "1.0.2/partitions.bin",
+          "address": 32768,
+          "size": 3072,
+          "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1"
+        },
+        {
+          "role": "boot_app0",
+          "file": "1.0.2/boot_app0.bin",
+          "address": 57344,
+          "size": 8192,
+          "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0"
+        },
+        {
+          "role": "application",
+          "file": "1.0.2/firmware.bin",
+          "address": 65536,
+          "size": 679984,
+          "sha256": "04d42e4736566d68ba8b2f11442925573edb5278238bbe02ebb40d48d823dbf4"
+        }
+      ]
+    },
     {
       "id": "vico-keyboard-standard-1.0.1",
       "version": "1.0.1",
