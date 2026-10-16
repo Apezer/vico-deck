@@ -29,7 +29,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .sidebar nav button:hover { color:#d9dde4; background:#15191f; }
 .sidebar nav button.active { color:#f2f4f7; background:#1b2027; box-shadow: inset 3px 0 var(--accent); }
 .sidebar nav button.active svg { color:var(--accent); }
-.sidebar-help { border:1px solid #242932; background:#12161b; border-radius:9px; padding:12px; display:flex; gap:9px; color:#777f8b; }
+.sidebar-help { width:100%; border:1px solid #242932; background:#12161b; border-radius:9px; padding:12px; display:flex; align-items:center; gap:9px; color:#777f8b; text-align:left; cursor:pointer; font:inherit; transition:border-color .18s ease,background .18s ease,color .18s ease; }
+.sidebar-help:hover { border-color:#3a4655; background:#171c22; color:#98a2af; }
+.sidebar-help:focus-visible { outline:2px solid #9bd400; outline-offset:2px; }
+.sidebar-help-copy { display:block; }
 .sidebar-help b { display:block; color:#c2c7cf; font-size:11px; }
 .sidebar-help span { font-size:9px; }
 .main { min-width:0; height:100vh; }
@@ -142,6 +145,15 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .device-picker-list>button>small { color:#555e69;font-size:7px; }
 .device-picker-empty { min-height:96px;border:1px dashed #2b323b;border-radius:8px;color:#69727d;font-size:9px;display:grid;place-items:center;text-align:center;padding:20px; }
 .device-picker-foot { padding:13px 18px;border-top:1px solid #242a32;display:flex;justify-content:flex-end; }
+.hooks-confirm-dialog { width:min(500px,100%);background:#12161b;border:1px solid #2a313a;border-radius:16px;padding:24px;box-shadow:0 28px 80px rgba(0,0,0,.48);display:grid;grid-template-columns:42px 1fr;gap:16px;animation:picker-in .18s ease-out; }
+.hooks-confirm-icon { width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:rgba(255,180,62,.1);border:1px solid rgba(255,180,62,.24);color:#ffb43e; }
+.hooks-confirm-icon svg { width:21px;height:21px; }
+.hooks-confirm-copy>span { display:block;color:#778392;font-size:8px;font-weight:700;letter-spacing:.13em;margin:2px 0 7px; }
+.hooks-confirm-copy h2 { margin:0 0 11px;color:#eef1f5;font-size:18px; }
+.hooks-confirm-copy p { margin:0 0 8px;color:#929ca8;font-size:10px;line-height:1.6; }
+.hooks-confirm-copy code { display:block;padding:10px 12px;border:1px solid #292f37;border-radius:7px;background:#0b0e12;color:#d4dae2;font-size:10px;overflow-wrap:anywhere; }
+.hooks-confirm-copy ul { margin:14px 0 0;padding-left:18px;color:#89939f;font-size:9px;line-height:1.75; }
+.hooks-confirm-actions { grid-column:1 / -1;display:flex;justify-content:flex-end;gap:9px;margin-top:4px;padding-top:16px;border-top:1px solid #242a32; }
 .drawer-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.48);z-index:20;display:flex;justify-content:flex-end;backdrop-filter:blur(2px); }
 .drawer { width:430px;height:100%;background:#101318;border-left:1px solid #2b313a;padding:25px;overflow:auto;box-shadow:-20px 0 50px #000;animation:slide .25s ease-out; }
 @keyframes slide { from{transform:translateX(100%)} }
@@ -323,6 +335,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .speech-card-title span,.speech-result-head span { color:#68727e;font-size:8px;letter-spacing:1.7px; }
 .speech-card-title h2,.speech-result-head h2 { margin:3px 0 0;font-size:14px;color:#e8edf2; }
 .speech-cloud-card>p { color:#707a85;font-size:8px;line-height:1.6;margin:14px 0; }
+.speech-cloud-card>.speech-provider-description { margin:8px 0 12px;color:#909aa5; }
+.speech-provider-field { display:block;margin-top:14px;text-align:left; }
+.speech-provider-field>span { display:block;margin-bottom:6px;color:#8d97a3;font-size:8px; }
+.speech-provider-field select,.speech-provider-field input { width:100%;height:36px;padding:0 10px;border:1px solid #303844;border-radius:5px;background:#090c10;color:#dce2e8;font-size:9px;outline:none; }
+.speech-provider-field select:focus,.speech-provider-field input:focus { border-color:#66742f; }
+.speech-provider-field select:disabled,.speech-provider-field input:disabled { opacity:.55; }
+.speech-provider-region { min-height:36px;margin-top:12px;padding:0 10px;display:flex;align-items:center;gap:8px;border:1px solid #29313a;border-radius:5px;background:#0b0e12;font-size:8px; }
+.speech-provider-region span { margin-right:auto;color:#78838f; }
+.speech-provider-region b { color:#cbd2d9;font-weight:500; }
+.speech-provider-region code { padding:3px 6px;border-radius:4px;background:rgba(214,255,56,.07);color:var(--accent);font-size:8px; }
+.speech-cloud-card>.speech-token-hint { margin:7px 0 0;color:#9a8f68; }
 .speech-key-status { min-height:34px;padding:0 10px;display:flex;align-items:center;gap:6px;border:1px solid #29313a;background:#0b0e12;color:#8d97a3;font-size:9px;border-radius:6px; }
 .speech-key-status svg { width:13px;color:var(--accent); }
 .speech-key-row { display:grid;grid-template-columns:1fr auto;gap:7px;margin-top:8px; }

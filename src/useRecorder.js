@@ -63,7 +63,7 @@ export function useRecorder() {
 
   useEffect(() => () => release(), []);
 
-  async function start(deviceId, onComplete, onError) {
+  async function start(deviceId, onComplete, onError, maxSeconds = 600) {
     if (active.current) return;
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -125,7 +125,7 @@ export function useRecorder() {
       state.timer = setInterval(() => {
         const elapsed = (Date.now() - startedAt) / 1000;
         setSeconds(Math.floor(elapsed));
-        if (elapsed >= 600) state.finish();
+        if (elapsed >= maxSeconds) state.finish();
       }, 100);
       setSeconds(0);
       setRecording(true);

@@ -24,6 +24,8 @@ import { profileCrc } from "./profile-protocol";
 import { buildPersistentRuntimeBitmapPackets, buildRgbSettingsPacket, buildRuntimeBitmapPackets, buildRuntimeSettingsPacket, buildRuntimeStatusPackets } from "./runtime-protocol";
 import defaultProfiles from "../shared/default-profiles.json";
 
+const HELP_URL = "http://vico.zheng2005.xyz/manual.html";
+
 const fallbackConfig = {
   schemaVersion: 2,
   startAtLogin: false, minimizeToTray: true, closeToTray: true,
@@ -111,6 +113,14 @@ function Sidebar({ page, setPage }) {
   const items = [
     ["keys", Keyboard, "按键配置"], ["oled", Monitor, "OLED 显示"], ["rgb", Palette, "RGB 灯光"], ["profiles", Layers3, "配置文件"], ["firmware", Download, "固件升级"], ["claude", Cpu, "Claude Code"], ["speech", Mic, "语音识别"], ["settings", Settings, "设置"]
   ];
+  const openHelp = () => {
+    if (window.vico?.openExternal) {
+      void window.vico.openExternal(HELP_URL);
+      return;
+    }
+    window.open(HELP_URL, "_blank", "noopener,noreferrer");
+  };
+
   return <aside className="sidebar">
     <Brand />
     <nav>
@@ -119,7 +129,9 @@ function Sidebar({ page, setPage }) {
       <p>应用</p>
       {items.slice(5).map(([id, Icon, label]) => <button key={id} className={page === id ? "active" : ""} onClick={() => setPage(id)}><Icon size={18}/><span>{label}</span></button>)}
     </nav>
-    <div className="sidebar-help"><CircleHelp size={17}/><div><b>需要帮助？</b><span>查看连接与固件指南</span></div></div>
+    <button type="button" className="sidebar-help" onClick={openHelp} aria-label="打开 Vico Keyboard 在线使用说明">
+      <CircleHelp size={17}/><span className="sidebar-help-copy"><b>需要帮助？</b><span>查看连接与固件指南</span></span>
+    </button>
   </aside>;
 }
 

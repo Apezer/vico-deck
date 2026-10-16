@@ -55,8 +55,13 @@ contextBridge.exposeInMainWorld("vico", {
   openExternal: (url) => ipcRenderer.invoke("external:open", url),
   speech: {
     check: () => ipcRenderer.invoke("speech:check"),
-    saveCredential: (key) => ipcRenderer.invoke("speech:credential:save", key),
-    clearCredential: () => ipcRenderer.invoke("speech:credential:clear"),
+    setProvider: (providerId) => ipcRenderer.invoke("speech:provider:set", providerId),
+    saveProvider: (providerId, credential, config) => ipcRenderer.invoke("speech:provider:save", {
+      providerId,
+      credential,
+      config
+    }),
+    clearCredential: (providerId) => ipcRenderer.invoke("speech:credential:clear", providerId),
     setShortcut: (shortcut) => ipcRenderer.invoke("speech:shortcut:set", shortcut),
     transcribeRecording: (bytes, settings) => ipcRenderer.invoke("speech:recording", bytes, settings),
     transcribeFile: (settings) => ipcRenderer.invoke("speech:file", settings),

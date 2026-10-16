@@ -1,6 +1,6 @@
 {
   "name": "vico-keyboard",
-  "version": "0.2.5",
+  "version": "0.2.7",
   "description": "VicoDeck desktop companion for Vico Keyboard",
   "main": "electron/main.cjs",
   "author": "Vico",
@@ -18,7 +18,7 @@
     "test:ble": "node test/ble-reconnect.test.mjs",
     "test:voice": "node test/voice-protocol.test.mjs",
     "test:recorder": "node test/recorder-wav.test.mjs",
-    "test:speech": "node --test test/doubao-service.test.cjs test/credential-store.test.cjs",
+    "test:speech": "node --test test/doubao-service.test.cjs test/dashscope-provider.test.cjs test/speech-manager.test.cjs test/credential-store.test.cjs",
     "test:update": "node test/update-service.test.cjs",
     "test:firmware": "node test/firmware-service.test.cjs",
     "test:usb": "node test/usb-device.test.cjs",
@@ -29,7 +29,8 @@
   "dependencies": {
     "electron-updater": "^6.8.9",
     "esptool-js": "^0.7.0",
-    "spark-md5": "^3.0.2"
+    "spark-md5": "^3.0.2",
+    "ws": "^8.18.3"
   },
   "overrides": {
     "js-yaml": "4.3.2"

@@ -1,5 +1,7 @@
+import { useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   Bluetooth,
   CheckCircle2,
   Clock3,
@@ -39,6 +41,7 @@ export default function ClaudePage({
   onInstallHooks,
   onSendTest
 }) {
+  const [showHooksConfirmation, setShowHooksConfirmation] = useState(false);
   const bleConnected = bleStatus.state === "connected";
   const usbConnected = usbStatus.state === "connected";
   const transportConnected = usbConnected || bleConnected;
@@ -97,7 +100,7 @@ export default function ClaudePage({
         <div className="relay-step">
           <div className={hooksInstalled ? "done" : ""}>{hooksInstalled ? <CheckCircle2 /> : "1"}</div>
           <section><b>安装或升级 Claude Code hooks</b><p>合并到现有 settings.json，不会覆盖环境变量、权限配置或第三方 hooks。</p></section>
-          <button className="secondary" disabled={installing || hooksInstalled} onClick={onInstallHooks}>
+          <button className="secondary" disabled={installing || hooksInstalled} onClick={() => setShowHooksConfirmation(true)}>
             {installing && <RefreshCw className="spin" size={14} />}{hooksInstalled ? `已安装 v${hooksState.hookVersion}` : installing ? "安装中" : hooksState?.needsUpgrade ? "升级" : "安装"}
           </button>
         </div>
@@ -128,5 +131,29 @@ export default function ClaudePage({
         </div>)}
       </div>
     </div>
+
+    {showHooksConfirmation && <div className="device-picker-backdrop" onMouseDown={() => setShowHooksConfirmation(false)}>
+      <section className="hooks-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="hooks-confirm-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="hooks-confirm-icon"><AlertTriangle /></div>
+        <div className="hooks-confirm-copy">
+          <span>CLAUDE CODE CONFIGURATION</span>
+          <h2 id="hooks-confirm-title">将修改 Claude Code 配置文件</h2>
+          <p>安装或升级 Vico Hooks 会写入以下文件：</p>
+          <code>%USERPROFILE%\.claude\settings.json</code>
+          <ul>
+            <li>VicoDeck 会合并所需 Hooks，不会清空现有配置。</li>
+            <li>环境变量、权限设置以及其他第三方 Hooks 将被保留。</li>
+            <li>如果你曾手动维护该文件，建议先自行备份。</li>
+          </ul>
+        </div>
+        <div className="hooks-confirm-actions">
+          <button type="button" className="secondary" onClick={() => setShowHooksConfirmation(false)}>取消</button>
+          <button type="button" className="primary" onClick={() => {
+            setShowHooksConfirmation(false);
+            onInstallHooks();
+          }}>{hooksState?.needsUpgrade ? "确认升级" : "确认安装"}</button>
+        </div>
+      </section>
+    </div>}
   </section>;
 }

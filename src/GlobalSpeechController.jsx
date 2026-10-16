@@ -6,7 +6,8 @@ const defaultOptions = {
   enablePunc:true,
   enableItn:true,
   enableSpeakerInfo:false,
-  enableChannelSplit:false
+  enableChannelSplit:false,
+  enableVad:true
 };
 
 function readOptions() {
@@ -59,7 +60,7 @@ export default function GlobalSpeechController() {
         stopRequestedRef.current = false;
         const cloud = await window.vico.speech.check();
         if (!cloud?.ok) throw new Error(cloud?.error || "无法检查语音识别服务");
-        if (!cloud.data?.configured) throw new Error("请先在 VicoDeck 的语音识别页面保存豆包 API Key");
+        if (!cloud.data?.configured) throw new Error("请先在 VicoDeck 的语音识别页面配置当前语音服务商");
 
         const microphoneId = localStorage.getItem("vico-speech-microphone") || "";
         await recorderRef.current.start(microphoneId, async (wavBytes) => {

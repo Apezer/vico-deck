@@ -10,7 +10,15 @@ const defaultOptions = {
   enablePunc:true,
   enableItn:true,
   enableSpeakerInfo:false,
-  enableChannelSplit:false
+  enableChannelSplit:false,
+  enableVad:true
+};
+
+const optionDefinitions = {
+  enableDdc:["语义顺滑", "减少口语重复与停顿"],
+  enablePunc:["自动标点", "补充逗号、句号和问号"],
+  enableItn:["数字规整", "将口语数字转换为阿拉伯数字"],
+  enableVad:["语音端点检测", "自动忽略录音前后的静音部分"]
 };
 
 function readOptions() {
@@ -40,6 +48,7 @@ function shortcutLabel(value) {
 export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnectBle, connecting }) {
   const [cloud, setCloud] = useState(null);
   const [apiKey, setApiKey] = useState("");
+  const [providerConfig, setProviderConfig] = useState({});
   const [options, setOptions] = useState(readOptions);
   const [status, setStatus] = useState("正在检查识别服务…");
   const [error, setError] = useState("");
@@ -55,6 +64,7 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnec
   const handledSession = useRef(0);
   const recorder = useRecorder();
   const connected = usbStatus.state === "connected" || bleStatus.state === "connected";
+  const activeProvider = cloud?.providers?.find((provider) => provider.id === cloud.provider);
 
   const refreshMicrophones = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -75,7 +85,10 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnec
     unwrap(window.vico?.speech?.check?.()).then((value) => {
       if (!active) return;
       setCloud(value);
-      setStatus(value.configured ? `按住 ${shortcutLabel(value.shortcut)} 开始语音输入` : "请先保存豆包 API Key，或先录音稍后识别");
+      setProviderConfig(value.config || {});
+      setStatus(value.configured
+        ? `按住 ${shortcutLabel(value.shortcut)} 开始语音输入`
+        : `请先配置${value.providerName || "语音服务商"}，或先录音稍后识别`);
     }).catch((reason) => {
       if (active) setError(reason.message);
     });
@@ -153,8 +166,8 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnec
       setPending(deviceEvent);
       if (cloud?.configured) transcribeBytes(deviceEvent);
       else {
-        setStatus("录音已收到，请保存 API Key 后开始识别");
-        window.vico.speech.updateShortcutState({ state:"error", source:"keyboard", message:"请先在软件中保存豆包 API Key" });
+        setStatus("录音已收到，请完成当前语音服务商配置后开始识别");
+        window.vico.speech.updateShortcutState({ state:"error", source:"keyboard", message:"请先在软件中配置当前语音服务商" });
       }
     }
   }, [deviceEvent, cloud?.configured]);
@@ -184,7 +197,7 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnec
         setPending(capture);
         setStatus("电脑录音已完成，正在准备识别…");
         if (cloud?.configured) await transcribeBytes(capture);
-        else setStatus("电脑录音已保存，请先保存 API Key 后识别");
+        else setStatus("电脑录音已保存，请先完成当前语音服务商配置后识别");
       }, handleRecorderError);
       setStatus("正在使用电脑麦克风录音，点击停止后自动识别");
       await refreshMicrophones();
@@ -195,15 +208,22 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnec
     }
   };
 
-  const saveCredential = async () => {
+  const saveProvider = async () => {
     setBusy(true);
     setError("");
     try {
-      const value = await unwrap(window.vico.speech.saveCredential(apiKey));
-      setCloud((current) => ({ ...current, ...value }));
+      const value = await unwrap(window.vico.speech.saveProvider(cloud.provider, apiKey, providerConfig));
+      setCloud(value);
+      setProviderConfig(value.config || {});
       setApiKey("");
-      setStatus(pending ? "API Key 已保存，可以识别刚才的录音" : `按住 ${shortcutLabel(cloud?.shortcut)} 开始语音输入`);
-      setNotice("API Key 已通过 Windows 安全存储加密保存");
+      setStatus(value.configured
+        ? pending
+          ? "服务商设置已保存，可以识别刚才的录音"
+          : `按住 ${shortcutLabel(value.shortcut)} 开始语音输入`
+        : `请补充${value.providerName}的必要配置`);
+      setNotice(apiKey.trim()
+        ? `${value.providerName}认证凭据已通过 Windows 安全存储加密保存`
+        : `${value.providerName}设置已保存`);
     } catch (reason) {
       setError(reason.message);
     } finally {
@@ -214,9 +234,29 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnec
   const clearCredential = async () => {
     setBusy(true);
     try {
-      const value = await unwrap(window.vico.speech.clearCredential());
-      setCloud((current) => ({ ...current, ...value }));
-      setStatus("请先保存豆包 API Key");
+      const value = await unwrap(window.vico.speech.clearCredential(cloud.provider));
+      setCloud(value);
+      setProviderConfig(value.config || {});
+      setStatus(`请先保存${value.providerName}认证凭据`);
+    } catch (reason) {
+      setError(reason.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selectProvider = async (providerId) => {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const value = await unwrap(window.vico.speech.setProvider(providerId));
+      setCloud(value);
+      setProviderConfig(value.config || {});
+      setApiKey("");
+      setStatus(value.configured
+        ? `已切换到${value.providerName}，按住 ${shortcutLabel(value.shortcut)} 开始语音输入`
+        : `已切换到${value.providerName}，请先完成服务配置`);
     } catch (reason) {
       setError(reason.message);
     } finally {
@@ -285,7 +325,7 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnec
           >
             {recorder.recording ? <><Square size={15}/>停止测试并识别</> : <><Mic size={15}/>{startingRecorder ? "正在打开麦克风…" : "开始 API 录音测试"}</>}
           </button>
-          {!cloud?.configured && <small>可以先录音；保存 API Key 后再识别刚才的内容。</small>}
+          {!cloud?.configured && <small>可以先录音；完成当前语音服务商配置后再识别刚才的内容。</small>}
         </div>
 
         <div className="speech-device-line">
@@ -305,19 +345,21 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnec
 
       <div className="speech-side">
         <div className="settings-block speech-cloud-card">
-          <div className="speech-card-title"><Cloud/><div><span>CLOUD MODEL</span><h2>豆包云端设置</h2></div></div>
-          <p>API Key 仅以 Windows DPAPI 加密文件保存在本机，不写入项目配置或日志。</p>
-          <div className="speech-key-status">{cloud?.configured ? <><Check/>已配置 · {cloud.masked}</> : "尚未配置 API Key"}</div>
-          <div className="speech-key-row"><input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="输入豆包 API Key"/><button disabled={busy || !apiKey.trim()} onClick={saveCredential}>保存</button></div>
-          {cloud?.configured && <button className="speech-clear-key" disabled={busy} onClick={clearCredential}><Trash2 size={13}/>删除已保存密钥</button>}
+          <div className="speech-card-title"><Cloud/><div><span>CLOUD MODEL</span><h2>语音服务商设置</h2></div></div>
+          <label className="speech-provider-field"><span>语音服务商</span><select value={cloud?.provider || "doubao"} disabled={busy || recorder.recording} onChange={(event) => selectProvider(event.target.value)}>{(cloud?.providers || []).map((provider) => <option value={provider.id} key={provider.id}>{provider.name} · {provider.model}</option>)}</select></label>
+          <p className="speech-provider-description">{activeProvider?.description || "选择电脑麦克风与键盘麦克风共用的识别服务。"}</p>
+          {cloud?.provider === "dashscope" && <div className="speech-provider-region"><span>服务地域</span><b>华北 2（北京）</b><code>{cloud.regionId || "cn-beijing"}</code></div>}
+          <p>认证凭据仅以 Windows DPAPI 加密文件保存在本机，不写入普通设置或日志。</p>
+          <div className="speech-key-status">{cloud?.configured ? <><Check/>已配置 · {cloud.masked}</> : cloud?.credentialSaved ? <>凭据已保存 · 请补充必要配置</> : `尚未配置${activeProvider?.credentialLabel || "认证凭据"}`}</div>
+          <div className="speech-key-row"><input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={`输入${activeProvider?.credentialLabel || "认证凭据"}`}/><button disabled={!cloud || busy || (!apiKey.trim() && !cloud?.credentialSaved)} onClick={saveProvider}>保存设置</button></div>
+          {cloud?.credentialSaved && <button className="speech-clear-key" disabled={busy} onClick={clearCredential}><Trash2 size={13}/>删除已保存密钥</button>}
         </div>
         <div className="settings-block speech-options-card">
           <h2>识别选项</h2>
-          {[
-            ["enableDdc", "语义顺滑", "减少口语重复与停顿"],
-            ["enablePunc", "自动标点", "补充逗号、句号和问号"],
-            ["enableItn", "数字规整", "将口语数字转换为阿拉伯数字"]
-          ].map(([name, title, description]) => <label key={name}><div><b>{title}</b><span>{description}</span></div><input type="checkbox" checked={options[name]} onChange={(event) => setOption(name, event.target.checked)}/></label>)}
+          {(cloud?.capabilities || []).map((name) => {
+            const [title, description] = optionDefinitions[name] || [name, "服务商专属识别选项"];
+            return <label key={name}><div><b>{title}</b><span>{description}</span></div><input type="checkbox" checked={options[name] !== false} onChange={(event) => setOption(name, event.target.checked)}/></label>;
+          })}
         </div>
       </div>
     </div>

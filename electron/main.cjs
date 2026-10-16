@@ -11,8 +11,10 @@ const {
   startStatusServer
 } = require("./claude-monitor.cjs");
 const { startSystemMonitor } = require("./system-monitor.cjs");
-const { DoubaoService, FORMAT_BY_EXTENSION } = require("./doubao-service.cjs");
 const { CredentialStore } = require("./credential-store.cjs");
+const { createProviderRegistry } = require("./speech/provider-registry.cjs");
+const { SpeechManager } = require("./speech/speech-manager.cjs");
+const { SpeechSettingsStore } = require("./speech/speech-settings-store.cjs");
 const { autoUpdater } = require("electron-updater");
 const { UpdateService } = require("./update-service.cjs");
 const { FirmwareService } = require("./firmware-service.cjs");
@@ -27,7 +29,6 @@ let isQuitting = false;
 let claudeStatusServer;
 let systemMonitor;
 let speechService;
-let speechCredentials;
 let speechBusy = false;
 let speechOverlayWindow;
 let speechOverlayHideTimer;
@@ -388,11 +389,16 @@ function registerSpeechShortcut(value) {
 
 app.whenReady().then(() => {
   if (!hasSingleInstanceLock) return;
-  speechService = new DoubaoService();
-  speechCredentials = new CredentialStore(
-    path.join(app.getPath("userData"), "doubao-api-key.bin"),
-    safeStorage
-  );
+  const speechUserData = app.getPath("userData");
+  speechService = new SpeechManager({
+    providers:createProviderRegistry(),
+    credentialStores:{
+      // 豆包继续使用旧路径，现有用户升级后无需重新输入 API Key。
+      doubao:new CredentialStore(path.join(speechUserData, "doubao-api-key.bin"), safeStorage),
+      dashscope:new CredentialStore(path.join(speechUserData, "speech-credentials", "dashscope-api-key.bin"), safeStorage)
+    },
+    settingsStore:new SpeechSettingsStore(path.join(speechUserData, "speech-settings.json"))
+  });
   speechService.onProgress = (progress) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("speech:progress", progress);
   };
@@ -697,7 +703,8 @@ function validateSpeechOptions(value = {}) {
     enablePunc:value.enablePunc !== false,
     enableItn:value.enableItn !== false,
     enableSpeakerInfo:Boolean(value.enableSpeakerInfo),
-    enableChannelSplit:Boolean(value.enableChannelSplit)
+    enableChannelSplit:Boolean(value.enableChannelSplit),
+    enableVad:value.enableVad !== false
   };
 }
 
@@ -712,23 +719,38 @@ async function runSpeechExclusive(operation) {
 }
 
 async function transcribeSpeechPath(audioPath, options) {
-  const apiKey = speechCredentials?.get();
-  if (!apiKey) throw new Error("请先在语音输入页面保存豆包 API Key");
-  return speechService.transcribe(audioPath, apiKey, validateSpeechOptions(options));
+  return speechService.transcribe(audioPath, validateSpeechOptions(options));
 }
 
 ipcMain.handle("speech:check", () => speechResult(() => ({
-  provider:"doubao",
-  model:"Doubao Seed-ASR 2.0",
-  resource:"volc.seedasr.auc",
+  ...speechService.snapshot(),
   shortcut:activeSpeechShortcut,
-  shortcutRegistered:speechShortcutRegistered,
-  ...(speechCredentials?.info() || { configured:false, masked:"" })
+  shortcutRegistered:speechShortcutRegistered
 })));
-ipcMain.handle("speech:credential:save", (_event, key) =>
-  speechResult(() => speechCredentials.save(key)));
-ipcMain.handle("speech:credential:clear", () =>
-  speechResult(() => speechCredentials.clear()));
+ipcMain.handle("speech:provider:set", (_event, providerId) => speechResult(() => {
+  if (speechShortcutState !== "idle") throw new Error("请先结束当前录音，再切换语音服务商");
+  return {
+    ...speechService.setActiveProvider(providerId),
+    shortcut:activeSpeechShortcut,
+    shortcutRegistered:speechShortcutRegistered
+  };
+}));
+ipcMain.handle("speech:provider:save", (_event, value = {}) => speechResult(() => {
+  if (speechShortcutState !== "idle") throw new Error("请先结束当前录音，再修改服务商设置");
+  return {
+    ...speechService.saveProvider(value.providerId, value),
+    shortcut:activeSpeechShortcut,
+    shortcutRegistered:speechShortcutRegistered
+  };
+}));
+ipcMain.handle("speech:credential:clear", (_event, providerId) => speechResult(() => {
+  if (speechShortcutState !== "idle") throw new Error("请先结束当前录音，再删除服务商密钥");
+  return {
+    ...speechService.clearCredential(providerId || speechService.snapshot().provider),
+    shortcut:activeSpeechShortcut,
+    shortcutRegistered:speechShortcutRegistered
+  };
+}));
 ipcMain.handle("speech:shortcut:set", (_event, shortcut) => speechResult(() => {
   if (speechShortcutState !== "idle") throw new Error("请等待当前录音或识别结束后再修改快捷键");
   const result = registerSpeechShortcut(shortcut);
@@ -752,7 +774,7 @@ ipcMain.handle("speech:recording", (_event, bytes, options) => speechResult(() =
   })));
 ipcMain.handle("speech:file", (_event, options) => speechResult(() =>
   runSpeechExclusive(async () => {
-    const extensions = [...FORMAT_BY_EXTENSION.keys()].map((value) => value.slice(1));
+    const extensions = speechService.supportedExtensions();
     const result = await dialog.showOpenDialog(mainWindow, {
       title:"选择需要识别的音频",
       properties:["openFile"],

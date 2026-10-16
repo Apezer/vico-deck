@@ -48,7 +48,7 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 - 五套固定预设，可分别编辑并同步到键盘 NVS
 - OLED 实时页面：Claude Code、CPU/GPU/内存、时钟日期和设备状态
 - RGB 灯光工作室：六种灯效、亮度、速度和总开关，通过 USB/BLE 实时同步
-- INMP441 按住说话：旋钮按下录音、松开后通过 USB/BLE 发送并调用豆包云端识别
+- INMP441 按住说话：旋钮按下录音、松开后通过 USB/BLE 发送并调用当前选择的云端服务商识别
 - USB WebHID 与 BLE GATT 共用紧凑运行时状态协议
 - Fn + KEY1～KEY5 可在不运行软件时切换 P1～P5
 - 通过设备 CRC 自动判断每套预设是否已经同步
@@ -79,9 +79,10 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 - 电脑麦克风方案不依赖键盘连接或语音固件，也可接收兼容固件发送的录音
 - 可在设置中修改全局按住说话快捷键（默认 `Ctrl + Alt + I`）：按下录音、松开识别，并把结果粘贴到原输入框
 - 录音期间显示不抢焦点的桌面麦克风悬浮提示；页面内录音按钮仅用于 API 连通测试
-- 使用豆包 Seed-ASR 2.0 云端模型，不下载本地 Whisper 模型
-- API Key 通过 Electron `safeStorage` 调用 Windows DPAPI 加密保存
-- 支持自动标点、数字规整、语义顺滑、复制和导出 TXT
+- 支持豆包 Seed-ASR 2.0 与阿里云百炼 `qwen-audio-3.1-asr-flash-message`，可在页面中切换当前服务商；百炼固定使用 `cn-beijing` 地域
+- 百炼模式只需一个 DashScope API Key，通过 WebSocket 向 Qwen Audio Message 模型发送 16 kHz 单声道 PCM 音频帧
+- 各厂商 API Key 相互隔离，并通过 Electron `safeStorage` 调用 Windows DPAPI 加密保存
+- 根据厂商能力动态显示语义顺滑、自动标点、数字规整或语音端点检测选项
 - 支持发送测试状态
 
 ### Windows 桌面体验
@@ -236,6 +237,7 @@ vico-deck/
 │  ├─ preload.cjs           # 安全 IPC 桥接
 │  ├─ claude-monitor.cjs    # Hooks 安装与状态服务
 │  ├─ doubao-service.cjs    # 豆包 Seed-ASR 2.0 提交与轮询
+│  ├─ speech/               # 语音厂商注册、路由、百炼 WebSocket 适配器与非敏感设置
 │  └─ credential-store.cjs  # Windows DPAPI API Key 存储
 ├─ src/
 │  ├─ App.jsx               # 主界面与应用状态
@@ -267,7 +269,7 @@ vico-deck/
 - [x] OLED 位图编辑与分片传输协议
 - [x] 固件端接收、CRC32 校验并持久化 OLED 位图
 - [x] RGB 灯效配置与设备端持久化
-- [x] INMP441 按住说话与豆包云端语音识别
+- [x] INMP441 按住说话与豆包/阿里云百炼多厂商识别
 - [ ] 固件升级工具
 - [ ] macOS 支持
 - [ ] 正式代码签名
