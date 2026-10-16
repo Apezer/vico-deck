@@ -5,7 +5,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   activeProvider:"doubao",
   providers:{
     doubao:{},
-    dashscope:{}
+    dashscope:{},
+    mimo:{ language:"auto", accessMode:"payg" }
   }
 });
 
@@ -43,7 +44,11 @@ class SpeechSettingsStore {
       activeProvider,
       providers:{
         doubao:{ ...(value.providers?.doubao || {}) },
-        dashscope:{ ...(value.providers?.dashscope || {}) }
+        dashscope:{ ...(value.providers?.dashscope || {}) },
+        mimo:{
+          language:value.providers?.mimo?.language || "auto",
+          accessMode:value.providers?.mimo?.accessMode === "tokenPlanCn" ? "tokenPlanCn" : "payg"
+        }
       }
     };
   }

@@ -32,9 +32,16 @@ class SpeechManager {
     });
   }
 
+  credentialStore(provider, config) {
+    const storeId = typeof provider.credentialStoreId === "function"
+      ? provider.credentialStoreId(config)
+      : provider.id;
+    return this.credentialStores[storeId];
+  }
+
   providerSnapshot(provider, settings = this.getSettings()) {
-    const credential = this.credentialStores[provider.id]?.info() || { configured:false, masked:"" };
     const config = this.providerConfig(provider, settings);
+    const credential = this.credentialStore(provider, config)?.info() || { configured:false, masked:"" };
     return {
       id:provider.id,
       name:provider.name,
@@ -92,7 +99,7 @@ class SpeechManager {
     });
     settings.providers[providerId] = sanitized;
     this.settingsStore.save(settings);
-    if (String(credential || "").trim()) this.credentialStores[providerId].save(credential);
+    if (String(credential || "").trim()) this.credentialStore(provider, sanitized).save(credential);
     return this.snapshot();
   }
 
@@ -100,7 +107,8 @@ class SpeechManager {
     if (this.activeService) throw new Error("请等待当前语音识别完成后再删除密钥");
     const provider = this.providers.get(providerId);
     if (!provider) throw new Error("不支持的语音识别服务商");
-    this.credentialStores[providerId].clear();
+    const config = this.providerConfig(provider);
+    this.credentialStore(provider, config).clear();
     return this.snapshot();
   }
 
@@ -109,7 +117,7 @@ class SpeechManager {
     const settings = this.getSettings();
     const provider = this.providers.get(settings.activeProvider) || this.providers.get("doubao");
     const config = this.providerConfig(provider, settings);
-    const credential = this.credentialStores[provider.id]?.get() || "";
+    const credential = this.credentialStore(provider, config)?.get() || "";
     if (!credential) throw new Error(`请先在语音输入页面保存${provider.credentialLabel}`);
     if (!provider.isConfigured(config)) throw new Error(`请先完成${provider.name}的服务配置`);
 

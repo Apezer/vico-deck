@@ -349,18 +349,23 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnec
           <label className="speech-provider-field"><span>语音服务商</span><select value={cloud?.provider || "doubao"} disabled={busy || recorder.recording} onChange={(event) => selectProvider(event.target.value)}>{(cloud?.providers || []).map((provider) => <option value={provider.id} key={provider.id}>{provider.name} · {provider.model}</option>)}</select></label>
           <p className="speech-provider-description">{activeProvider?.description || "选择电脑麦克风与键盘麦克风共用的识别服务。"}</p>
           {cloud?.provider === "dashscope" && <div className="speech-provider-region"><span>服务地域</span><b>华北 2（北京）</b><code>{cloud.regionId || "cn-beijing"}</code></div>}
+          {cloud?.provider === "mimo" && <>
+            <label className="speech-provider-field"><span>调用方式</span><select value={providerConfig.accessMode || "payg"} disabled={busy || recorder.recording} onChange={(event) => setProviderConfig((current) => ({ ...current, accessMode:event.target.value }))}><option value="payg">按量付费 API</option><option value="tokenPlanCn">Token Plan · 中国区</option></select></label>
+            <label className="speech-provider-field"><span>识别语言</span><select value={providerConfig.language || "auto"} disabled={busy || recorder.recording} onChange={(event) => setProviderConfig((current) => ({ ...current, language:event.target.value }))}><option value="auto">自动检测</option><option value="zh">中文</option><option value="en">英文</option></select></label>
+            <div className="speech-provider-region"><span>API Key 类型</span><b>{providerConfig.accessMode === "tokenPlanCn" ? "Token Plan" : "按量付费"}</b><code>{providerConfig.accessMode === "tokenPlanCn" ? "tp- / ttp-" : "sk-"}</code></div>
+          </>}
           <p>认证凭据仅以 Windows DPAPI 加密文件保存在本机，不写入普通设置或日志。</p>
           <div className="speech-key-status">{cloud?.configured ? <><Check/>已配置 · {cloud.masked}</> : cloud?.credentialSaved ? <>凭据已保存 · 请补充必要配置</> : `尚未配置${activeProvider?.credentialLabel || "认证凭据"}`}</div>
-          <div className="speech-key-row"><input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={`输入${activeProvider?.credentialLabel || "认证凭据"}`}/><button disabled={!cloud || busy || (!apiKey.trim() && !cloud?.credentialSaved)} onClick={saveProvider}>保存设置</button></div>
+          <div className="speech-key-row"><input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={cloud?.provider === "mimo" ? `输入${providerConfig.accessMode === "tokenPlanCn" ? "Token Plan" : "按量付费"} API Key` : `输入${activeProvider?.credentialLabel || "认证凭据"}`}/><button disabled={!cloud || busy || (!apiKey.trim() && !cloud?.credentialSaved)} onClick={saveProvider}>保存设置</button></div>
           {cloud?.credentialSaved && <button className="speech-clear-key" disabled={busy} onClick={clearCredential}><Trash2 size={13}/>删除已保存密钥</button>}
         </div>
-        <div className="settings-block speech-options-card">
+        {(cloud?.capabilities || []).length > 0 && <div className="settings-block speech-options-card">
           <h2>识别选项</h2>
           {(cloud?.capabilities || []).map((name) => {
             const [title, description] = optionDefinitions[name] || [name, "服务商专属识别选项"];
             return <label key={name}><div><b>{title}</b><span>{description}</span></div><input type="checkbox" checked={options[name] !== false} onChange={(event) => setOption(name, event.target.checked)}/></label>;
           })}
-        </div>
+        </div>}
       </div>
     </div>
 

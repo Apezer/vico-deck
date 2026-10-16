@@ -79,8 +79,9 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 - 电脑麦克风方案不依赖键盘连接或语音固件，也可接收兼容固件发送的录音
 - 可在设置中修改全局按住说话快捷键（默认 `Ctrl + Alt + I`）：按下录音、松开识别，并把结果粘贴到原输入框
 - 录音期间显示不抢焦点的桌面麦克风悬浮提示；页面内录音按钮仅用于 API 连通测试
-- 支持豆包 Seed-ASR 2.0 与阿里云百炼 `qwen-audio-3.1-asr-flash-message`，可在页面中切换当前服务商；百炼固定使用 `cn-beijing` 地域
+- 支持豆包 Seed-ASR 2.0、阿里云百炼 `qwen-audio-3.1-asr-flash-message` 与小米 `MiMo-V2.5-ASR`，可在页面中切换当前服务商；百炼固定使用 `cn-beijing` 地域
 - 百炼模式只需一个 DashScope API Key，通过 WebSocket 向 Qwen Audio Message 模型发送 16 kHz 单声道 PCM 音频帧
+- 小米 MiMo 模式使用 API Key 提交 WAV/MP3，可选择自动检测、中文或英文；按量 API 与中国区 Token Plan 使用独立凭据和对应 Base URL
 - 各厂商 API Key 相互隔离，并通过 Electron `safeStorage` 调用 Windows DPAPI 加密保存
 - 根据厂商能力动态显示语义顺滑、自动标点、数字规整或语音端点检测选项
 - 支持发送测试状态

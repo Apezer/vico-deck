@@ -4,6 +4,10 @@ const {
   DASHSCOPE_FORMATS,
   DASHSCOPE_REGION_ID
 } = require("./providers/dashscope-provider.cjs");
+const {
+  MiMoService,
+  MIMO_FORMATS
+} = require("./providers/mimo-provider.cjs");
 
 /** 创建内置语音厂商列表；厂商差异被限制在各自适配器和元数据中。 */
 function createProviderRegistry({ fetchImpl = globalThis.fetch } = {}) {
@@ -36,6 +40,24 @@ function createProviderRegistry({ fetchImpl = globalThis.fetch } = {}) {
       isConfigured:() => true,
       formats:DASHSCOPE_FORMATS,
       service:new DashScopeService()
+    },
+    {
+      id:"mimo",
+      name:"小米 MiMo",
+      model:"MiMo-V2.5-ASR",
+      resource:"mimo-v2.5-asr",
+      description:"支持中英文、粤语、吴语、闽南语和四川话等场景的语音识别",
+      credentialLabel:"MiMo API Key",
+      capabilities:[],
+      defaultConfig:{ language:"auto", accessMode:"payg" },
+      sanitizeConfig:(config = {}) => ({
+        language:["auto", "zh", "en"].includes(config.language) ? config.language : "auto",
+        accessMode:config.accessMode === "tokenPlanCn" ? "tokenPlanCn" : "payg"
+      }),
+      credentialStoreId:(config) => config.accessMode === "tokenPlanCn" ? "mimo-token-plan" : "mimo",
+      isConfigured:() => true,
+      formats:MIMO_FORMATS,
+      service:new MiMoService({ fetchImpl })
     }
   ];
 }

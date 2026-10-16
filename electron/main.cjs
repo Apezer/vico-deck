@@ -395,7 +395,9 @@ app.whenReady().then(() => {
     credentialStores:{
       // 豆包继续使用旧路径，现有用户升级后无需重新输入 API Key。
       doubao:new CredentialStore(path.join(speechUserData, "doubao-api-key.bin"), safeStorage),
-      dashscope:new CredentialStore(path.join(speechUserData, "speech-credentials", "dashscope-api-key.bin"), safeStorage)
+      dashscope:new CredentialStore(path.join(speechUserData, "speech-credentials", "dashscope-api-key.bin"), safeStorage),
+      mimo:new CredentialStore(path.join(speechUserData, "speech-credentials", "mimo-api-key.bin"), safeStorage),
+      "mimo-token-plan":new CredentialStore(path.join(speechUserData, "speech-credentials", "mimo-token-plan-api-key.bin"), safeStorage)
     },
     settingsStore:new SpeechSettingsStore(path.join(speechUserData, "speech-settings.json"))
   });
