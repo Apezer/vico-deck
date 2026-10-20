@@ -2,22 +2,22 @@
   "schemaVersion": 1,
   "device": "Vico Keyboard",
   "board": "DFRobot FireBeetle 2 ESP32-S3",
-  "generatedAt": "2026-10-20T12:00:00+08:00",
+  "generatedAt": "2026-10-20T20:30:00+08:00",
   "releases": [
     {
-      "id": "vico-keyboard-standard-1.0.3",
-      "version": "1.0.3",
+      "id": "vico-keyboard-standard-1.0.4",
+      "version": "1.0.4",
       "category": "keyboard",
       "channel": "stable",
-      "title": "Vico Keyboard 1.0.3",
+      "title": "Vico Keyboard 1.0.4",
       "publishedAt": "2026-10-20",
-      "description": "升级设备端设置菜单动效，并支持使用旋钮快速选择菜单项目。",
+      "description": "将 OLED 显示内容和 RGB 灯效改为清晰的二级选择菜单。",
       "notes": [
-        "选中框采用非阻塞弹簧动画，列表超过四项时连续平滑滚动",
-        "进入子菜单和返回上级菜单时使用方向一致的横向滑动动画",
-        "增加菜单滚动条，帮助识别当前位置和剩余项目",
-        "设置菜单内支持旋钮导航：顺时针向下、逆时针向上",
-        "保留 1.0.2 的 512 KB PSRAM 蓝牙语音缓冲区和全部键盘功能"
+        "OLED 显示内容提供独立二级菜单，可直接选择六种显示页面",
+        "RGB 灯效提供独立二级菜单，可直接浏览和选择八种灯效",
+        "二级菜单自动定位当前设置，并使用星号标记正在使用的选项",
+        "确认选择后立即保存并平滑返回上一级，KEY5 可取消返回",
+        "保留 1.0.3 的菜单动画、旋钮导航和全部键盘功能"
       ],
       "target": {
         "chip": "ESP32-S3",
@@ -28,31 +28,31 @@
       "images": [
         {
           "role": "bootloader",
-          "file": "1.0.3/bootloader.bin",
+          "file": "1.0.4/bootloader.bin",
           "address": 0,
           "size": 15104,
           "sha256": "e01a2300de23c8d601e9f2a37684b5dbc83ae37132d5a8833e23520afd895f92"
         },
         {
           "role": "partitions",
-          "file": "1.0.3/partitions.bin",
+          "file": "1.0.4/partitions.bin",
           "address": 32768,
           "size": 3072,
           "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1"
         },
         {
           "role": "boot_app0",
-          "file": "1.0.3/boot_app0.bin",
+          "file": "1.0.4/boot_app0.bin",
           "address": 57344,
           "size": 8192,
           "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0"
         },
         {
           "role": "application",
-          "file": "1.0.3/firmware.bin",
+          "file": "1.0.4/firmware.bin",
           "address": 65536,
-          "size": 681872,
-          "sha256": "274a4c4b708adbcfb142e18e15af53ed04ec0e10ca0f16741a7fa2c1a64f4b0f"
+          "size": 682064,
+          "sha256": "f18ca63149917553d48b595aaa5ec627758c6cdb4036ac8280ef2a9891e05a76"
         }
       ]
     },
