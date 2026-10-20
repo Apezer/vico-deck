@@ -96,7 +96,7 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 
 ### USB 固件升级
 
-- 可从下拉框选择云端的 Vico Keyboard 固件版本
+- 可从下拉框选择最新的 Vico Keyboard 固件或 VicoPlay 小游戏机固件
 - 云端固件是默认入口，并按照云端目录定义自动决定烧录范围
 - 本地快速升级可直接选择一个应用固件 BIN 文件
 - 本地完整烧录可选择包含四个分段 BIN 镜像的文件夹
@@ -105,7 +105,7 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 - 只显示 Espressif/Vico USB 串口，并在写入前验证芯片必须为 ESP32-S3
 - 镜像下载后执行 SHA-256 校验，写入后执行设备端 MD5 校验
 - 沿用 PlatformIO 分段烧录布局，升级时保留 NVS 中的按键、OLED 与 RGB 设置
-- 当前源码内置 Vico Keyboard 固件 `1.0.2`，服务器目录不可用时仍可离线升级
+- 当前源码内置 Vico Keyboard `1.0.3` 与 VicoPlay `0.1.0`，服务器目录不可用时仍可离线安装
 
 ## 快速开始
 
