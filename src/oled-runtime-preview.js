@@ -1,5 +1,6 @@
 import { drawGfxText } from "./gfx-font.js";
 import { createBlankBitmap, setBitmapPixel } from "./oled-bitmap.js";
+import { renderAstronautAnimation } from "./astronaut-animation.js";
 
 const PAGE_LABELS = Object.freeze({
   brand: "品牌",
@@ -7,7 +8,8 @@ const PAGE_LABELS = Object.freeze({
   system: "性能",
   clock: "时钟",
   device: "键盘",
-  custom: "自定义像素画"
+  custom: "自定义像素画",
+  animation: "GIF 动画"
 });
 
 const CLAUDE_LOGO_32X16 = Uint8Array.from([
@@ -198,6 +200,7 @@ function renderDevice(bitmap, profileSlot, connected, batteryPercent, batteryMil
 
 /** 以与固件相同的 128×64 像素坐标生成软件端实时预览。 */
 export function renderRuntimePreview({ page, systemStatus, claudeStatus, profileSlot = 0, connected = false, connectionMode, batteryPercent, batteryMillivolts, now = new Date() }) {
+  if (page === "animation") return renderAstronautAnimation(now);
   const bitmap = createBlankBitmap();
   const resolvedConnectionMode = connectionMode || (connected ? "USB" : "ADV");
   if (page === "claude") renderClaude(bitmap, claudeStatus, resolvedConnectionMode, batteryPercent, now);

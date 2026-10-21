@@ -18,11 +18,18 @@ import {
   bitmapToBase64,
   createBlankBitmap,
   importImageBitmap,
-  invertBitmap
+  invertBitmap,
+  ssd1306PageBufferToBitmap
 } from "./oled-bitmap";
+import { astronautPageFrames } from "./astronaut-animation";
+import { encodeVani } from "./animation-format";
+import { convertGifFile } from "./gif-converter";
 import { profileCrc } from "./profile-protocol";
 import { buildPersistentRuntimeBitmapPackets, buildRgbSettingsPacket, buildRuntimeBitmapPackets, buildRuntimeSettingsPacket, buildRuntimeStatusPackets } from "./runtime-protocol";
 import defaultProfiles from "../shared/default-profiles.json";
+import bongoCatGifUrl from "./assets/gif-examples/bongo-cat.gif?url";
+import horseGifUrl from "./assets/gif-examples/horse.gif?url";
+import musicCatGifUrl from "./assets/gif-examples/music-cat.gif?url";
 
 const HELP_URL = "http://vico.zheng2005.xyz/manual.html";
 
@@ -82,6 +89,38 @@ const RGB_EFFECTS = [
   { id:5, name:"纯色渐变", description:"整块灯光缓慢变色", className:"solid" },
   { id:7, name:"七彩呼吸", description:"每完成一次呼吸后切换一种颜色", className:"rainbow-breathing" }
 ];
+
+const GIF_EXAMPLES = [
+  { id:"astronaut", name:"宇航员", description:"20 帧线条动画", builtIn:true },
+  { id:"bongo-cat", name:"Bongo Cat", description:"4 帧敲击动画", url:bongoCatGifUrl },
+  { id:"music-cat", name:"Music Cat", description:"16 帧像素猫", url:musicCatGifUrl },
+  { id:"horse", name:"奔跑的马", description:"12 帧轮廓动画", url:horseGifUrl, invert:true }
+];
+
+function astronautAnimationProject() {
+  const pageFrames = astronautPageFrames();
+  const delays = Array(pageFrames.length).fill(100);
+  return {
+    name:"宇航员",
+    vani:encodeVani(pageFrames, delays),
+    bitmaps:pageFrames.map(ssd1306PageBufferToBitmap),
+    delays,
+    sourceFrames:pageFrames.length,
+    duration:delays.reduce((total, value) => total + value, 0),
+    startedAt:Date.now()
+  };
+}
+
+function animationFrameAt(project, now) {
+  if (!project?.bitmaps?.length) return createBlankBitmap();
+  const total = project.delays.reduce((sum, delay) => sum + delay, 0) || 1;
+  let cursor = Math.max(0, now.getTime() - Number(project.startedAt || 0)) % total;
+  for (let index = 0; index < project.bitmaps.length; index += 1) {
+    if (cursor < project.delays[index]) return project.bitmaps[index];
+    cursor -= project.delays[index];
+  }
+  return project.bitmaps.at(-1);
+}
 
 function colorHueOffset(hexColor) {
   const match = /^#?([0-9a-f]{6})$/i.exec(hexColor || "");
@@ -293,13 +332,22 @@ function OledPage({
   profile, updateProfile, runtime, updateRuntime, systemStatus, claudeStatus,
   deviceConnected, deviceMode, batteryPercent, batteryMillivolts,
   usbStatus, bleStatus, bleConnecting, onConnectBle, onDisconnectBle,
-  onSaveCustomBitmap, savingCustomBitmap
+  onSaveCustomBitmap, savingCustomBitmap,
+  onUploadAnimation, onDeleteAnimation, animationUploading, animationUploadProgress
 }) {
   const oled = profile.oled;
   const [tool, setTool] = useState("draw");
   const [importMessage, setImportMessage] = useState("");
   const [previewNow, setPreviewNow] = useState(() => new Date());
+  const [animationProject, setAnimationProject] = useState(astronautAnimationProject);
+  const [animationSourceFile, setAnimationSourceFile] = useState(null);
+  const [animationConverting, setAnimationConverting] = useState(false);
+  const [animationMessage, setAnimationMessage] = useState("当前使用内置宇航员示例");
+  const [animationOptions, setAnimationOptions] = useState({
+    fit:"contain", dither:"bayer", threshold:128, invert:false, maximumFps:10
+  });
   const imageInputRef = useRef(null);
+  const gifInputRef = useRef(null);
   const set = (patch) => updateProfile({ ...profile, oled: { ...oled, ...patch } });
   const setBitmap = (bitmap) => set({ mode:"custom", bitmap });
   const selectContent = (page) => {
@@ -327,9 +375,46 @@ function OledPage({
     (claudeStatus?.state === "done" && Date.now() - Number(claudeStatus.updatedAt || 0) < 5000)
   );
   const previewPage = claudeOverrides ? "claude" : selectedPage;
+  const convertAnimation = async (file, optionOverrides = {}) => {
+    if (!file) return;
+    setAnimationConverting(true);
+    setAnimationMessage("正在解析 GIF…");
+    try {
+      const options = { ...animationOptions, ...optionOverrides };
+      const converted = await convertGifFile(file, options);
+      setAnimationSourceFile(file);
+      setAnimationProject({ ...converted, name:file.name, startedAt:Date.now() });
+      setAnimationMessage(
+        `${converted.sourceFrames} 原始帧 → ${converted.bitmaps.length} OLED 帧 · ` +
+        `${Math.ceil(converted.vani.length / 1024)} KiB`
+      );
+    } catch (error) {
+      setAnimationMessage(error.message || "GIF 转换失败");
+    } finally {
+      setAnimationConverting(false);
+    }
+  };
+  const chooseGifExample = async (example) => {
+    if (example.builtIn) {
+      setAnimationSourceFile(null);
+      setAnimationProject(astronautAnimationProject());
+      setAnimationMessage("宇航员 · 20 帧 · 内置示例");
+      return;
+    }
+    try {
+      const response = await fetch(example.url);
+      const file = new File([await response.blob()], `${example.id}.gif`, { type:"image/gif" });
+      const nextOptions = { ...animationOptions, invert:Boolean(example.invert) };
+      setAnimationOptions(nextOptions);
+      await convertAnimation(file, nextOptions);
+    } catch (error) {
+      setAnimationMessage(error.message || "示例动画读取失败");
+    }
+  };
   useEffect(() => {
-    if (previewPage !== "claude") return undefined;
-    const timer = setInterval(() => setPreviewNow(new Date()), 180);
+    if (previewPage !== "claude" && previewPage !== "animation") return undefined;
+    const interval = previewPage === "animation" ? 50 : 180;
+    const timer = setInterval(() => setPreviewNow(new Date()), interval);
     return () => clearInterval(timer);
   }, [previewPage]);
   const runtimePreviewBitmap = useMemo(() => renderRuntimePreview({
@@ -343,6 +428,10 @@ function OledPage({
     batteryMillivolts,
     now:previewNow
   }), [previewPage, systemStatus, claudeStatus, profile.slot, deviceConnected, deviceMode, batteryPercent, batteryMillivolts, previewNow]);
+  const animationPreviewBitmap = useMemo(
+    () => animationFrameAt(animationProject, previewNow),
+    [animationProject, previewNow]
+  );
   const metricValue = (value) => Number.isFinite(value) ? `${Math.round(value)}%` : "--";
   const usbConnected = usbStatus?.state === "connected";
   const bleConnected = bleStatus?.state === "connected";
@@ -377,8 +466,23 @@ function OledPage({
     <div className="oled-grid">
       <div className="oled-preview-card">
         <div className="card-label"><span>设备实时预览</span><span>128 × 64 · 1-BIT</span></div>
-        <OledPixelCanvas oled={selectedPage === "custom" ? { ...oled, mode:"custom" } : oled} tool={tool} onBitmapChange={setBitmap} previewBitmap={selectedPage === "custom" ? null : runtimePreviewBitmap}/>
-        <p>{selectedPage === "custom" ? "拖动鼠标绘制；每个小方块对应 OLED 上的一个真实像素。" : claudeOverrides ? "Coding 自动覆盖正在生效；结束后会返回所选页面。" : "预览和键盘固件使用相同的像素坐标；性能数据约每秒更新一次。"}</p>
+        <OledPixelCanvas
+          oled={selectedPage === "custom" ? { ...oled, mode:"custom" } : oled}
+          tool={tool}
+          onBitmapChange={setBitmap}
+          previewBitmap={selectedPage === "custom"
+            ? null
+            : selectedPage === "animation" && !claudeOverrides
+              ? animationPreviewBitmap
+              : runtimePreviewBitmap}
+        />
+        <p>{selectedPage === "custom"
+          ? "拖动鼠标绘制；每个小方块对应 OLED 上的一个真实像素。"
+          : selectedPage === "animation" && !claudeOverrides
+            ? "软件与固件使用同一份 128×64 单色动画帧和播放时间。"
+            : claudeOverrides
+              ? "Coding 自动覆盖正在生效；结束后会返回所选页面。"
+              : "预览和键盘固件使用相同的像素坐标；性能数据约每秒更新一次。"}</p>
       </div>
       <div className="settings-card">
         <h2>显示内容</h2>
@@ -397,6 +501,78 @@ function OledPage({
             <i><span style={{ width:Number.isFinite(value) ? `${Math.max(0, Math.min(100, value))}%` : "0%" }}/></i>
           </div>)}
           <small>{systemStatus.online === false ? "电脑监控服务离线" : "由 VicoDeck 后台服务持续采集"}</small>
+        </div>}
+
+        {selectedPage === "animation" && <div className="gif-animation-tools">
+          <div className="gif-section-title">示例动画</div>
+          <div className="gif-example-grid">
+            {GIF_EXAMPLES.map((example) => <button
+              type="button"
+              key={example.id}
+              disabled={animationConverting || animationUploading}
+              onClick={() => chooseGifExample(example)}
+            >
+              <b>{example.name}</b>
+              <span>{example.description}</span>
+            </button>)}
+          </div>
+
+          <div className="gif-section-title">导入与转换</div>
+          <div className="gif-action-row">
+            <button
+              type="button"
+              disabled={animationConverting || animationUploading}
+              onClick={() => gifInputRef.current?.click()}
+            ><Upload size={14}/>选择本地 GIF</button>
+            {animationSourceFile && <button
+              type="button"
+              disabled={animationConverting || animationUploading}
+              onClick={() => convertAnimation(animationSourceFile)}
+            ><RefreshCw size={14}/>应用参数</button>}
+          </div>
+          <input
+            ref={gifInputRef}
+            type="file"
+            accept="image/gif,.gif"
+            hidden
+            onChange={(event) => {
+              const [file] = event.target.files || [];
+              event.target.value = "";
+              if (file) convertAnimation(file);
+            }}
+          />
+
+          <div className="gif-option-grid">
+            <label>画面适配<select value={animationOptions.fit} onChange={(event) => setAnimationOptions((current) => ({ ...current, fit:event.target.value }))}><option value="contain">完整显示</option><option value="cover">填满裁剪</option></select></label>
+            <label>黑白算法<select value={animationOptions.dither} onChange={(event) => setAnimationOptions((current) => ({ ...current, dither:event.target.value }))}><option value="threshold">普通阈值</option><option value="bayer">Bayer 抖动</option><option value="floyd">Floyd-Steinberg</option></select></label>
+            <label>最大帧率<select value={animationOptions.maximumFps} onChange={(event) => setAnimationOptions((current) => ({ ...current, maximumFps:Number(event.target.value) }))}><option value="5">5 FPS</option><option value="10">10 FPS</option><option value="15">15 FPS</option></select></label>
+            <label className="gif-check"><input type="checkbox" checked={animationOptions.invert} onChange={(event) => setAnimationOptions((current) => ({ ...current, invert:event.target.checked }))}/>反相显示</label>
+          </div>
+          <div className="range-label"><label>二值化阈值</label><b>{animationOptions.threshold}</b></div>
+          <input className="range" type="range" min="32" max="224" value={animationOptions.threshold} onChange={(event) => setAnimationOptions((current) => ({ ...current, threshold:Number(event.target.value) }))}/>
+          <p className="gif-convert-message">{animationConverting ? "正在转换，请稍候…" : animationMessage}</p>
+
+          <button
+            className="pixel-save-button"
+            disabled={!usbConnected || !usbStatus?.animation?.supported || animationConverting || animationUploading}
+            onClick={() => onUploadAnimation(animationProject.vani)}
+          >
+            {animationUploading ? <RefreshCw className="spin" size={14}/> : <Save size={14}/>}
+            {animationUploading ? `正在写入键盘 ${animationUploadProgress}%` : "保存动画到键盘"}
+          </button>
+          {animationUploading && <div className="gif-upload-progress"><i style={{ width:`${animationUploadProgress}%` }}/></div>}
+          <div className="gif-device-state">
+            <span>{usbStatus?.animation?.stored
+              ? `键盘已保存 ${Math.ceil(usbStatus.animation.storedBytes / 1024)} KiB 动画`
+              : "键盘当前使用内置示例"}</span>
+            {usbConnected && usbStatus?.animation?.stored && <button
+              className="danger-subtle"
+              disabled={animationUploading}
+              onClick={onDeleteAnimation}
+            ><Trash2 size={13}/>删除设备动画</button>}
+          </div>
+          {!usbConnected && <p className="pixel-help">动画文件较大，第一版需要通过 USB 配置通道保存。</p>}
+          {usbConnected && !usbStatus?.animation?.supported && <p className="pixel-help">当前固件不支持动画存储，请先更新键盘固件。</p>}
         </div>}
 
         {selectedPage === "custom" && <div className="pixel-tools custom-pixel-tools">
@@ -422,9 +598,13 @@ function OledPage({
           {importMessage && <p className="pixel-import-message">{importMessage}</p>}
         </div>}
 
-        <div className="setting-row compact"><div><b>Coding 自动覆盖</b><span>{selectedPage === "custom" ? "自定义像素画显示期间保持关闭" : "Claude Code 工作、等待或出错时自动切换到 Coding"}</span></div><Toggle disabled={selectedPage === "custom"} value={runtime.autoClaude} onChange={(value) => updateRuntime({ ...runtime, autoClaude:value })}/></div>
+        {selectedPage !== "animation" &&
+          <div className="setting-row compact"><div><b>Coding 自动覆盖</b><span>{selectedPage === "custom" ? "自定义像素画显示期间保持关闭" : "Claude Code 工作、等待或出错时自动切换到 Coding"}</span></div><Toggle disabled={selectedPage === "custom"} value={runtime.autoClaude} onChange={(value) => updateRuntime({ ...runtime, autoClaude:value })}/></div>
+        }
         <div className="runtime-help">选择后会立即通过 USB 或蓝牙同步到键盘；键盘端也可使用 Fn + KEY6 / KEY7 切换。</div>
-        <div className="range-label"><label>屏幕亮度</label><b>{oled.brightness}%</b></div><input className="range" type="range" min="10" max="100" value={oled.brightness} onChange={(e) => set({ brightness:Number(e.target.value) })}/>
+        {selectedPage !== "animation" && <>
+          <div className="range-label"><label>屏幕亮度</label><b>{oled.brightness}%</b></div><input className="range" type="range" min="10" max="100" value={oled.brightness} onChange={(e) => set({ brightness:Number(e.target.value) })}/>
+        </>}
       </div>
     </div>
   </section>;
@@ -690,6 +870,8 @@ export default function App() {
   const [activity, setActivity] = useState([]);
   const [bleConnecting, setBleConnecting] = useState(false);
   const [savingCustomBitmap, setSavingCustomBitmap] = useState(false);
+  const [animationUploading, setAnimationUploading] = useState(false);
+  const [animationUploadProgress, setAnimationUploadProgress] = useState(0);
   const [hooksInstalling, setHooksInstalling] = useState(false);
   const [deviceSelection, setDeviceSelection] = useState(null);
   const [liveOledFrame, setLiveOledFrame] = useState(null);
@@ -744,7 +926,14 @@ export default function App() {
       setConfig({
         ...fallbackConfig,
         ...saved,
-        oledRuntime:{ ...savedRuntime, page:savedRuntime.page === "auto" ? "brand" : savedRuntime.page },
+        oledRuntime:{
+          ...savedRuntime,
+          page:savedRuntime.page === "auto"
+            ? "brand"
+            : savedRuntime.page === "astronaut"
+              ? "animation"
+              : savedRuntime.page
+        },
         rgb:{ ...fallbackConfig.rgb, ...(saved?.rgb || {}) },
         startAtLogin:autostart
       });
@@ -917,6 +1106,26 @@ export default function App() {
       setSavingCustomBitmap(false);
     }
   };
+  const uploadAnimation = async (vani) => {
+    setAnimationUploading(true);
+    setAnimationUploadProgress(0);
+    try {
+      const result = await deviceRef.current.uploadAnimation(vani, setAnimationUploadProgress);
+      setToast(`GIF 动画已保存到键盘 · ${Math.ceil(result.bytes / 1024)} KiB`);
+    } catch (error) {
+      setToast(error.message || "GIF 动画上传失败");
+    } finally {
+      setAnimationUploading(false);
+    }
+  };
+  const deleteAnimation = async () => {
+    try {
+      await deviceRef.current.deleteAnimation();
+      setToast("键盘中的用户动画已删除，已恢复内置示例");
+    } catch (error) {
+      setToast(error.message || "删除动画失败");
+    }
+  };
   const selectDevice = async (deviceId) => {
     if (!deviceSelection) return;
     const requestId = deviceSelection.requestId;
@@ -978,6 +1187,10 @@ export default function App() {
             onDisconnectBle={disconnectBle}
             onSaveCustomBitmap={saveCustomBitmap}
             savingCustomBitmap={savingCustomBitmap}
+            onUploadAnimation={uploadAnimation}
+            onDeleteAnimation={deleteAnimation}
+            animationUploading={animationUploading}
+            animationUploadProgress={animationUploadProgress}
           />
         )}
         {page === "rgb" && <RgbPage

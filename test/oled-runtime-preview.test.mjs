@@ -15,7 +15,7 @@ const common = {
   now:new Date(2026, 7, 6, 14, 26)
 };
 
-const pages = ["brand", "claude", "system", "clock", "device"]
+const pages = ["brand", "claude", "system", "clock", "device", "animation"]
   .map((page) => renderRuntimePreview({ ...common, page }));
 
 for (const bitmap of pages) {
@@ -38,4 +38,8 @@ const thinkingFrameA = renderRuntimePreview({ ...common, page:"claude", now:new 
 const thinkingFrameB = renderRuntimePreview({ ...common, page:"claude", now:new Date(2026, 7, 6, 14, 26, 0, 180) });
 assert.notDeepEqual(thinkingFrameA, thinkingFrameB);
 
-console.log("OLED runtime preview passed: five pages, performance data and Claude orbit animation");
+const astronautFrameA = renderRuntimePreview({ ...common, page:"animation", now:new Date(0) });
+const astronautFrameB = renderRuntimePreview({ ...common, page:"animation", now:new Date(100) });
+assert.notDeepEqual(astronautFrameA, astronautFrameB);
+
+console.log("OLED runtime preview passed: six pages, performance data, Claude orbit and astronaut animation");

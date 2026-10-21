@@ -54,6 +54,10 @@ const customSettings = buildRuntimeSettingsPacket({ page:"custom", autoClaude:fa
 assert.equal(customSettings[3], RUNTIME_PAGE.CUSTOM);
 assert.deepEqual(parseRuntimeSettingsPacket(customSettings), { page:"custom", autoClaude:false });
 
+const animationSettings = buildRuntimeSettingsPacket({ page:"animation", autoClaude:true });
+assert.equal(animationSettings[3], RUNTIME_PAGE.ANIMATION);
+assert.deepEqual(parseRuntimeSettingsPacket(animationSettings), { page:"animation", autoClaude:true });
+
 const rgbSettings = buildRgbSettingsPacket({ effect:6, brightness:72, speed:165, enabled:false, color:"#12A4F0" });
 assert.equal(validateRuntimePacket(rgbSettings), true);
 assert.deepEqual(Array.from(rgbSettings.slice(2, 10)), [7, 6, 72, 165, 0, 0x12, 0xA4, 0xF0]);

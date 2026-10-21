@@ -67,7 +67,7 @@ https://update.zheng2005.xyz/firmware/catalog.json
 
 ## 当前内置版本
 
-- `Vico Keyboard 1.0.4`：键盘正式固件，只保留当前最新版本。
+- `Vico Keyboard 1.0.5`：键盘正式固件，只保留当前最新版本。
 - `VicoPlay 0.1.0`：独立小游戏机固件，包含打砖块、贪吃蛇和俄罗斯方块。
 
 VicoPlay 会替换键盘主程序，不提供 USB/BLE 键盘、语音或 RGB 功能。需要恢复键盘时，

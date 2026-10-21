@@ -15,6 +15,13 @@ import {
 } from "./profile-protocol.js";
 import { buildVoiceSessionPacket, parseRuntimeSettingsPacket } from "./runtime-protocol.js";
 import { VoiceTransferReceiver } from "./voice-protocol.js";
+import {
+  ANIMATION_CHUNK_BYTES,
+  ANIMATION_COMMAND,
+  ANIMATION_ERRORS,
+  uint32Bytes,
+  validateAnimationForUpload
+} from "./animation-protocol.js";
 
 const VICO_USB_VENDOR_ID = 0x3343;
 const VICO_USB_PRODUCT_ID = 0x83cf;
@@ -25,7 +32,8 @@ const COMMAND = {
   OLED_META: 0x20,
   OLED_BITMAP: 0x21,
   COMMIT: 0x30,
-  RUNTIME_UPDATE: 0x40
+  RUNTIME_UPDATE: 0x40,
+  ...ANIMATION_COMMAND
 };
 const OLED_CHUNK_BYTES = 58;
 const RUNTIME_SETTINGS_CHANGED = 0x92;
@@ -67,6 +75,7 @@ export class VicoDevice {
     this.pendingCommand = null;
     this.connectedStatus = null;
     this.runtimeWriteQueue = Promise.resolve();
+    this.animationUploading = false;
     this.handleDisconnect = this.handleDisconnect.bind(this);
     this.handleInputReport = this.handleInputReport.bind(this);
     navigator.hid?.addEventListener("disconnect", this.handleDisconnect);
@@ -126,7 +135,8 @@ export class VicoDevice {
         activeProfile: info.activeProfile,
         profileCrcs: info.profileCrcs,
         batteryPercent: info.batteryPercent,
-        batteryMillivolts: info.batteryMillivolts
+        batteryMillivolts: info.batteryMillivolts,
+        animation:info.animation
       });
       this.connectedStatus = {
         state: "connected",
@@ -139,7 +149,8 @@ export class VicoDevice {
         activeProfile: info.activeProfile,
         profileCrcs: info.profileCrcs,
         batteryPercent: info.batteryPercent,
-        batteryMillivolts: info.batteryMillivolts
+        batteryMillivolts: info.batteryMillivolts,
+        animation:info.animation
       };
     } catch (error) {
       device.removeEventListener("inputreport", this.handleInputReport);
@@ -199,6 +210,31 @@ export class VicoDevice {
         const batteryMillivolts = payload.length >= batteryOffset + 3
           ? payload[batteryOffset + 1] | (payload[batteryOffset + 2] << 8)
           : 0;
+        const animationOffset = batteryOffset + 3;
+        const animation = payload.length >= animationOffset + 14
+          ? {
+              supported:Boolean(payload[animationOffset] & 1),
+              maximumBytes:(
+                payload[animationOffset + 1] |
+                (payload[animationOffset + 2] << 8) |
+                (payload[animationOffset + 3] << 16) |
+                (payload[animationOffset + 4] << 24)
+              ) >>> 0,
+              stored:Boolean(payload[animationOffset + 5]),
+              storedBytes:(
+                payload[animationOffset + 6] |
+                (payload[animationOffset + 7] << 8) |
+                (payload[animationOffset + 8] << 16) |
+                (payload[animationOffset + 9] << 24)
+              ) >>> 0,
+              storedCrc:(
+                payload[animationOffset + 10] |
+                (payload[animationOffset + 11] << 8) |
+                (payload[animationOffset + 12] << 16) |
+                (payload[animationOffset + 13] << 24)
+              ) >>> 0
+            }
+          : { supported:false, maximumBytes:0, stored:false, storedBytes:0, storedCrc:0 };
         this.helloResolver?.({
           protocolVersion: payload[0],
           width: payload[1],
@@ -218,7 +254,8 @@ export class VicoDevice {
             ) >>> 0;
           }),
           batteryPercent:batteryMillivolts > 0 ? Math.min(100, payload[batteryOffset]) : null,
-          batteryMillivolts:batteryMillivolts || null
+          batteryMillivolts:batteryMillivolts || null,
+          animation
         });
       } else {
         this.helloRejecter?.(new Error("设备身份握手无效，连接已取消"));
@@ -233,7 +270,12 @@ export class VicoDevice {
         clearTimeout(pending.timer);
         this.pendingCommand = null;
         if (result === 0) pending.resolve({ slot, activeProfile });
-        else pending.reject(new Error(PROFILE_ERRORS[result] || `键盘返回错误 ${result}`));
+        else {
+          const animationCommand = acknowledgedCommand >= ANIMATION_COMMAND.BEGIN &&
+            acknowledgedCommand <= ANIMATION_COMMAND.CANCEL;
+          const message = animationCommand ? ANIMATION_ERRORS[result] : PROFILE_ERRORS[result];
+          pending.reject(new Error(message || `键盘返回错误 ${result}`));
+        }
       }
       return;
     }
@@ -247,7 +289,7 @@ export class VicoDevice {
 
 
     if (parsed.command === RUNTIME_SETTINGS_CHANGED && parsed.payload.length >= 2) {
-      const pageNames = ["brand", "claude", "system", "clock", "device", "custom"];
+      const pageNames = ["brand", "claude", "system", "clock", "device", "custom", "animation"];
       const page = pageNames[parsed.payload[0]];
       if (page) this.onRuntimeSettings({ page, autoClaude:parsed.payload[1] !== 0 });
       return;
@@ -279,6 +321,7 @@ export class VicoDevice {
       if (this.voiceExclusive) this.onVoice({ type:"error", message:"USB 连接已断开，语音录音已取消" });
       this.voiceReceiver.reset();
       this.voiceExclusive = false;
+      this.animationUploading = false;
       this.clearHandshake();
       this.clearPendingCommand(new Error("键盘已断开"));
       this.connectedStatus = null;
@@ -293,6 +336,7 @@ export class VicoDevice {
     if (this.voiceExclusive) this.onVoice({ type:"error", message:"USB 连接已断开，语音录音已取消" });
     this.voiceReceiver.reset();
     this.voiceExclusive = false;
+    this.animationUploading = false;
     this.clearHandshake();
     this.clearPendingCommand(new Error("键盘已断开"));
     if (device?.opened) {
@@ -310,6 +354,11 @@ export class VicoDevice {
   async send(command, payload) {
     if (!this.device?.opened) throw new Error("请先连接键盘");
     if (this.voiceExclusive) throw new Error("键盘正在进行语音输入，请松开旋钮后再操作");
+    if (this.animationUploading &&
+      command !== COMMAND.DISPLAY_SUBSCRIBE &&
+      !(command >= ANIMATION_COMMAND.BEGIN && command <= ANIMATION_COMMAND.CANCEL)) {
+      throw new Error("正在上传 GIF 动画，请等待上传完成");
+    }
     await this.device.sendReport(VICO_HID_REPORT_ID, buildHidReport(command, payload));
   }
 
@@ -402,6 +451,64 @@ export class VicoDevice {
 
   async sync(profile) {
     return this.syncProfile(profile, true);
+  }
+
+  /** 将软件已经转换完成的 VANI 文件可靠地写入键盘 SPIFFS。 */
+  async uploadAnimation(bytes, onProgress = () => {}) {
+    const capability = this.connectedStatus?.animation;
+    if (!capability?.supported || (this.connectedStatus?.protocolVersion || 0) < 3) {
+      throw new Error("键盘固件版本过旧，不支持 GIF 动画上传");
+    }
+    const source = validateAnimationForUpload(bytes, capability.maximumBytes);
+    this.animationUploading = true;
+    try {
+      await this.send(COMMAND.DISPLAY_SUBSCRIBE, [0]);
+      await this.requestCommand(
+        ANIMATION_COMMAND.BEGIN,
+        [...uint32Bytes(source.bytes.length), ...uint32Bytes(source.crc)],
+        5000
+      );
+      for (let offset = 0; offset < source.bytes.length; offset += ANIMATION_CHUNK_BYTES) {
+        const chunk = source.bytes.slice(offset, offset + ANIMATION_CHUNK_BYTES);
+        await this.requestCommand(
+          ANIMATION_COMMAND.CHUNK,
+          [...uint32Bytes(offset), ...chunk],
+          5000
+        );
+        onProgress(Math.round((offset + chunk.length) * 100 / source.bytes.length));
+      }
+      await this.requestCommand(ANIMATION_COMMAND.COMMIT, [], 15000);
+      this.publishProfileStatus({
+        animation:{
+          ...capability,
+          stored:true,
+          storedBytes:source.bytes.length,
+          storedCrc:source.crc
+        }
+      });
+      return { bytes:source.bytes.length, crc:source.crc };
+    } catch (error) {
+      await this.send(ANIMATION_COMMAND.CANCEL, []).catch(() => {});
+      throw error;
+    } finally {
+      this.animationUploading = false;
+      await this.send(COMMAND.DISPLAY_SUBSCRIBE, [1]).catch(() => {});
+    }
+  }
+
+  async deleteAnimation() {
+    if (!this.connectedStatus?.animation?.supported) {
+      throw new Error("键盘固件版本过旧，不支持 GIF 动画管理");
+    }
+    await this.requestCommand(ANIMATION_COMMAND.DELETE, [], 5000);
+    this.publishProfileStatus({
+      animation:{
+        ...this.connectedStatus.animation,
+        stored:false,
+        storedBytes:0,
+        storedCrc:0
+      }
+    });
   }
 
   async writeRuntimePacket(packet) {

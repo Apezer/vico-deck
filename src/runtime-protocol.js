@@ -6,7 +6,8 @@ export const RUNTIME_PAGE = Object.freeze({
   SYSTEM: 2,
   CLOCK: 3,
   DEVICE: 4,
-  CUSTOM: 5
+  CUSTOM: 5,
+  ANIMATION: 6
 });
 
 export const RUNTIME_PAGE_NAME = Object.freeze({
@@ -15,7 +16,8 @@ export const RUNTIME_PAGE_NAME = Object.freeze({
   system: RUNTIME_PAGE.SYSTEM,
   clock: RUNTIME_PAGE.CLOCK,
   device: RUNTIME_PAGE.DEVICE,
-  custom: RUNTIME_PAGE.CUSTOM
+  custom: RUNTIME_PAGE.CUSTOM,
+  animation: RUNTIME_PAGE.ANIMATION
 });
 
 const CLAUDE_STATE = Object.freeze({

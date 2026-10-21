@@ -60,6 +60,20 @@ export function ssd1306PageBufferToBitmap(pageBuffer) {
   return bitmap;
 }
 
+/** 将编辑器的行优先位图转换为 Adafruit_SSD1306 页优先帧。 */
+export function bitmapToSsd1306PageBuffer(bitmap) {
+  const pageBuffer = createBlankBitmap();
+  if (!bitmap || bitmap.length !== OLED_BITMAP_BYTES) return pageBuffer;
+  for (let y = 0; y < OLED_HEIGHT; y += 1) {
+    for (let x = 0; x < OLED_WIDTH; x += 1) {
+      if (getBitmapPixel(bitmap, x, y)) {
+        pageBuffer[x + Math.floor(y / 8) * OLED_WIDTH] |= 1 << (y & 7);
+      }
+    }
+  }
+  return pageBuffer;
+}
+
 export function invertBitmap(bytes) {
   const result = Uint8Array.from(bytes);
   for (let index = 0; index < result.length; index += 1) {
