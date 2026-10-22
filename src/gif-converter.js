@@ -17,10 +17,22 @@ function canvas(width, height) {
   return element;
 }
 
-function targetRect(sourceWidth, sourceHeight, fit) {
-  const scale = fit === "cover"
-    ? Math.max(128 / sourceWidth, 64 / sourceHeight)
-    : Math.min(128 / sourceWidth, 64 / sourceHeight);
+/**
+ * 计算 GIF 在 128×64 OLED 上的目标区域。
+ * balanced 允许用户在完整显示和铺满裁剪之间连续调整，特别适合方形 GIF。
+ */
+export function gifTargetRect(sourceWidth, sourceHeight, fit, zoom = 140) {
+  if (fit === "stretch") return { x:0, y:0, width:128, height:64 };
+
+  const containScale = Math.min(128 / sourceWidth, 64 / sourceHeight);
+  const coverScale = Math.max(128 / sourceWidth, 64 / sourceHeight);
+  let scale = containScale;
+  if (fit === "cover") {
+    scale = coverScale;
+  } else if (fit === "balanced") {
+    const zoomRatio = Math.max(1, Math.min(2, Number(zoom) / 100 || 1.4));
+    scale = Math.min(coverScale, containScale * zoomRatio);
+  }
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));
   return {
@@ -154,7 +166,9 @@ export async function convertGifFile(file, userOptions = {}) {
     throw new Error("请选择不超过 20 MB 的 GIF 文件");
   }
   const options = {
-    fit:userOptions.fit === "cover" ? "cover" : "contain",
+    fit:["contain", "balanced", "cover", "stretch"].includes(userOptions.fit)
+      ? userOptions.fit : "balanced",
+    zoom:Math.max(100, Math.min(200, Number(userOptions.zoom) || 140)),
     background:userOptions.background === "white" ? "white" : "black",
     dither:["threshold", "bayer", "floyd"].includes(userOptions.dither)
       ? userOptions.dither : "bayer",
@@ -189,7 +203,7 @@ export async function convertGifFile(file, userOptions = {}) {
   const patchContext = patchCanvas.getContext("2d", { willReadFrequently:true });
   const outputCanvas = canvas(128, 64);
   const outputContext = outputCanvas.getContext("2d", { willReadFrequently:true });
-  const placement = targetRect(sourceWidth, sourceHeight, options.fit);
+  const placement = gifTargetRect(sourceWidth, sourceHeight, options.fit, options.zoom);
   const converted = [];
 
   for (const frame of frames) {

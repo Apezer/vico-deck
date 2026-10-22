@@ -344,7 +344,7 @@ function OledPage({
   const [animationConverting, setAnimationConverting] = useState(false);
   const [animationMessage, setAnimationMessage] = useState("当前使用内置宇航员示例");
   const [animationOptions, setAnimationOptions] = useState({
-    fit:"contain", background:"black", dither:"bayer", threshold:128, invert:false, maximumFps:10
+    fit:"balanced", zoom:140, background:"black", dither:"bayer", threshold:128, invert:false, maximumFps:10
   });
   const imageInputRef = useRef(null);
   const gifInputRef = useRef(null);
@@ -543,12 +543,16 @@ function OledPage({
           />
 
           <div className="gif-option-grid">
-            <label>画面适配<select value={animationOptions.fit} onChange={(event) => setAnimationOptions((current) => ({ ...current, fit:event.target.value }))}><option value="contain">完整显示</option><option value="cover">填满裁剪</option></select></label>
+            <label>画面适配<select value={animationOptions.fit} onChange={(event) => setAnimationOptions((current) => ({ ...current, fit:event.target.value }))}><option value="balanced">均衡放大（推荐）</option><option value="contain">完整显示</option><option value="stretch">不裁剪铺满（会变形）</option><option value="cover">填满裁剪</option></select></label>
             <label>空白背景<select value={animationOptions.background} onChange={(event) => setAnimationOptions((current) => ({ ...current, background:event.target.value }))}><option value="black">黑色</option><option value="white">白色</option></select></label>
             <label>黑白算法<select value={animationOptions.dither} onChange={(event) => setAnimationOptions((current) => ({ ...current, dither:event.target.value }))}><option value="threshold">普通阈值</option><option value="bayer">Bayer 抖动</option><option value="floyd">Floyd-Steinberg</option></select></label>
             <label>最大帧率<select value={animationOptions.maximumFps} onChange={(event) => setAnimationOptions((current) => ({ ...current, maximumFps:Number(event.target.value) }))}><option value="5">5 FPS</option><option value="10">10 FPS</option><option value="15">15 FPS</option></select></label>
             <label className="gif-check"><input type="checkbox" checked={animationOptions.invert} onChange={(event) => setAnimationOptions((current) => ({ ...current, invert:event.target.checked }))}/>反相显示</label>
           </div>
+          {animationOptions.fit === "balanced" && <>
+            <div className="range-label"><label>放大比例</label><b>{animationOptions.zoom}%</b></div>
+            <input className="range" type="range" min="100" max="200" step="5" value={animationOptions.zoom} onChange={(event) => setAnimationOptions((current) => ({ ...current, zoom:Number(event.target.value) }))}/>
+          </>}
           <div className="range-label"><label>二值化阈值</label><b>{animationOptions.threshold}</b></div>
           <input className="range" type="range" min="32" max="224" value={animationOptions.threshold} onChange={(event) => setAnimationOptions((current) => ({ ...current, threshold:Number(event.target.value) }))}/>
           <p className="gif-convert-message">{animationConverting ? "正在转换，请稍候…" : animationMessage}</p>
