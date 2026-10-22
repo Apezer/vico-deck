@@ -31,8 +31,22 @@ function targetRect(sourceWidth, sourceHeight, fit) {
   };
 }
 
-function luminancePixels(imageData, invert) {
+/**
+ * 返回二值化前应使用的画布背景色。
+ * 反相处理发生在画布合成之后，因此这里需要预先使用相反颜色，
+ * 确保最终 OLED 上的空白区域始终与用户选择一致。
+ */
+export function gifCanvasBackground(background, invert) {
+  const finalBackgroundIsWhite = background === "white";
+  const canvasBackgroundIsWhite = invert
+    ? !finalBackgroundIsWhite
+    : finalBackgroundIsWhite;
+  return canvasBackgroundIsWhite ? "#ffffff" : "#000000";
+}
+
+function luminancePixels(imageData, invert, background) {
   const values = new Float32Array(128 * 64);
+  const backgroundValue = gifCanvasBackground(background, invert) === "#ffffff" ? 255 : 0;
   for (let index = 0; index < values.length; index += 1) {
     const offset = index * 4;
     const alpha = imageData.data[offset + 3] / 255;
@@ -40,7 +54,7 @@ function luminancePixels(imageData, invert) {
       imageData.data[offset] * 0.2126 +
       imageData.data[offset + 1] * 0.7152 +
       imageData.data[offset + 2] * 0.0722
-    ) * alpha;
+    ) * alpha + backgroundValue * (1 - alpha);
     if (invert) value = 255 - value;
     values[index] = value;
   }
@@ -66,7 +80,9 @@ function bayerBitmap(values, threshold) {
   for (let y = 0; y < 64; y += 1) {
     for (let x = 0; x < 128; x += 1) {
       const adjustment = (matrix[y & 3][x & 3] - 7.5) * 8;
-      setBitmapPixel(bitmap, x, y, values[y * 128 + x] >= threshold + adjustment);
+      // 保留纯黑和纯白端点，避免高阈值时白色背景出现抖动杂点。
+      const adjustedThreshold = Math.max(1, Math.min(254, threshold + adjustment));
+      setBitmapPixel(bitmap, x, y, values[y * 128 + x] >= adjustedThreshold);
     }
   }
   return bitmap;
@@ -94,10 +110,20 @@ function floydSteinbergBitmap(values, threshold) {
 }
 
 function imageDataToBitmap(imageData, options) {
-  const values = luminancePixels(imageData, options.invert);
-  if (options.dither === "bayer") return bayerBitmap(values, options.threshold);
-  if (options.dither === "floyd") return floydSteinbergBitmap(values, options.threshold);
-  return thresholdBitmap(values, options.threshold);
+  const values = luminancePixels(imageData, options.invert, options.background);
+  let bitmap;
+  if (options.dither === "bayer") bitmap = bayerBitmap(values, options.threshold);
+  else if (options.dither === "floyd") bitmap = floydSteinbergBitmap(values, options.threshold);
+  else bitmap = thresholdBitmap(values, options.threshold);
+
+  // 完全透明处就是 GIF 的空白区域，强制写入目标背景色，避免抖动误差扩散出杂点。
+  const backgroundPixelEnabled = options.background === "white";
+  for (let index = 0; index < 128 * 64; index += 1) {
+    if (imageData.data[index * 4 + 3] === 0) {
+      setBitmapPixel(bitmap, index % 128, Math.floor(index / 128), backgroundPixelEnabled);
+    }
+  }
+  return bitmap;
 }
 
 function limitFrameRate(frames, maximumFps) {
@@ -129,6 +155,7 @@ export async function convertGifFile(file, userOptions = {}) {
   }
   const options = {
     fit:userOptions.fit === "cover" ? "cover" : "contain",
+    background:userOptions.background === "white" ? "white" : "black",
     dither:["threshold", "bayer", "floyd"].includes(userOptions.dither)
       ? userOptions.dither : "bayer",
     threshold:Math.max(32, Math.min(224, Number(userOptions.threshold) || 128)),
@@ -177,6 +204,7 @@ export async function convertGifFile(file, userOptions = {}) {
     );
     sourceContext.drawImage(patchCanvas, 0, 0);
 
+    // 保留透明度，以便二值化后精确识别缩放留白和 GIF 自身的透明区域。
     outputContext.clearRect(0, 0, 128, 64);
     outputContext.imageSmoothingEnabled = true;
     outputContext.drawImage(

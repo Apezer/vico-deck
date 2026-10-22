@@ -1,6 +1,6 @@
 {
   "name": "vico-keyboard",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "VicoDeck desktop companion for Vico Keyboard",
   "main": "electron/main.cjs",
   "author": "Vico",
@@ -15,6 +15,7 @@
     "test:runtime": "node test/runtime-protocol.test.mjs",
     "test:runtime-preview": "node test/oled-runtime-preview.test.mjs",
     "test:animation": "node test/animation-format.test.mjs",
+    "test:gif": "node test/gif-converter.test.mjs",
     "test:system": "node test/system-monitor.test.cjs",
     "test:ble": "node test/ble-reconnect.test.mjs",
     "test:voice": "node test/voice-protocol.test.mjs",
