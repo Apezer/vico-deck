@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, BatteryMedium, Bluetooth, ChevronDown, CircleHelp, Command, Cpu, Download,
-  Eraser, Gauge, Keyboard, Layers3, Mic, Monitor, Moon, MoreHorizontal, Palette, Pencil,
+  Eraser, Gauge, Keyboard, Layers3, Mic, Monitor, Moon, Palette, Pencil,
   Play, Plus, Power, RefreshCw, Rocket, Save, Settings, SlidersHorizontal,
-  Sparkles, Sun, Trash2, Unplug, Upload, Usb, Volume2, WifiOff, X
+  Sparkles, Sun, Trash2, Upload, Usb, Volume2, WifiOff, X
 } from "lucide-react";
 import { VicoBleDevice, VicoDevice } from "./device";
 import ClaudePage from "./ClaudePage";
 import SpeechPage from "./SpeechPage";
 import FirmwarePage from "./FirmwarePage";
+import DeviceConnectionCenter, { ConnectionNotice } from "./DeviceConnectionCenter";
 import GlobalSpeechController from "./GlobalSpeechController";
 import LiveOledCanvas from "./LiveOledCanvas";
 import OledPixelCanvas from "./OledPixelCanvas";
@@ -174,20 +175,35 @@ function Sidebar({ page, setPage }) {
   </aside>;
 }
 
-function Header({ status, connect, disconnect, syncing, sync }) {
-  const connected = status.state === "connected";
-  const connecting = status.state === "connecting";
-  const battery = Number.isFinite(status.batteryPercent) ? `${status.batteryPercent}%` : null;
+function Header({ usbStatus, bleStatus, bleConnecting, syncing, sync, onOpenConnection }) {
+  const usbConnected = usbStatus.state === "connected";
+  const usbConnecting = usbStatus.state === "connecting";
+  const bleConnected = bleStatus.state === "connected";
+  const connected = usbConnected || bleConnected;
+  const connecting = usbConnecting || bleConnecting;
+  const activeStatus = usbConnected ? usbStatus : bleStatus;
+  const mode = usbConnected ? "USB" : bleConnected ? "蓝牙" : null;
+  const battery = Number.isFinite(activeStatus?.batteryPercent) ? `${activeStatus.batteryPercent}%` : null;
   return <header className="topbar">
     <div className="crumb"><span>Vico Keyboard</span><ChevronDown size={15}/></div>
     <div className="top-actions">
-      <div className={`device-pill ${connected ? "connected" : connecting ? "connecting" : ""}`}><span className="status-dot"/>{connected ? `${status.name}${battery ? ` · ${battery}` : ""}` : connecting ? "正在验证 Vico USB 固件" : "USB 设备未连接"}</div>
-      <button className="ghost square"><MoreHorizontal size={19}/></button>
-      {connected && <button className="secondary header-disconnect" onClick={disconnect}><Unplug size={15}/>断开</button>}
-      <button className="connect-btn" onClick={connected ? sync : connect} disabled={syncing || connecting}>
-        {syncing || connecting ? <RefreshCw className="spin" size={16}/> : connected ? <Save size={16}/> : <Usb size={16}/>}
-        {syncing ? "正在同步" : connecting ? "正在连接 USB" : connected ? "同步到设备" : "USB 连接设备"}
+      <button
+        className={`connection-summary ${connected ? "connected" : connecting ? "connecting" : "disconnected"}`}
+        onClick={onOpenConnection}
+        aria-haspopup="dialog"
+      >
+        <span className="connection-summary-icon">{bleConnected || bleConnecting ? <Bluetooth size={16}/> : <Usb size={16}/>}</span>
+        <span className="connection-summary-copy">
+          <b>{connected ? activeStatus?.name || "Vico Keyboard" : connecting ? "正在连接 Vico Keyboard" : "Vico Keyboard 未连接"}</b>
+          <small>{connected ? `${mode}${battery ? ` · ${battery}` : ""}` : connecting ? "请在设备窗口中完成选择" : "USB 或蓝牙"}</small>
+        </span>
+        <ChevronDown size={14}/>
       </button>
+      {usbConnected && <button className="connect-btn" onClick={sync} disabled={syncing || connecting}>
+        {syncing ? <RefreshCw className="spin" size={16}/> : <Save size={16}/>}
+        {syncing ? "正在同步" : "同步到设备"}
+      </button>
+      }
     </div>
   </header>;
 }
@@ -240,16 +256,14 @@ function DeviceSelectionDialog({ request, onSelect }) {
   </div>;
 }
 
-function DeviceHero({ status, connect }) {
-  const connected = status.state === "connected";
-  const connecting = status.state === "connecting";
-  const battery = Number.isFinite(status.batteryPercent) ? `${status.batteryPercent}%` : "--%";
+function DeviceHero({ connected, mode, batteryPercent, connecting, onOpenConnection }) {
+  const battery = Number.isFinite(batteryPercent) ? `${batteryPercent}%` : "--%";
   return <section className="device-hero">
     <div>
       <div className="eyebrow"><span className="live-dot"/> VICO 8 · ESP32-S3</div>
       <h1>让每一次触发，<br/><em>都恰到好处。</em></h1>
       <p>8 个可编程按键与一块属于你的 OLED。<br/>为常用动作创建更短、更自然的路径。</p>
-      {!connected && !connecting && <button className="hero-connect" onClick={connect}><Usb size={17}/>连接 Vico 8</button>}
+      {!connected && !connecting && <button className="hero-connect" onClick={onOpenConnection}><Power size={17}/>连接 Vico Keyboard</button>}
     </div>
     <div className="device-visual">
       <div className="glow"/>
@@ -265,7 +279,7 @@ function DeviceHero({ status, connect }) {
         <span className="mini-key mini-aux3"/>
         <span className="mini-key mini-enter">ENTER</span>
       </div>
-      <div className="connection-tag">{connected ? <><BatteryMedium size={16}/> {battery} · USB</> : <><WifiOff size={16}/> 等待连接</>}</div>
+      <div className="connection-tag">{connected ? <><BatteryMedium size={16}/> {battery} · {mode}</> : connecting ? <><RefreshCw className="spin" size={16}/> 正在连接</> : <><WifiOff size={16}/> 等待连接</>}</div>
     </div>
   </section>;
 }
@@ -291,21 +305,30 @@ function KeyEditor({ mapping, onClose, onChange }) {
   </div>;
 }
 
-function KeysPage({ profile, profiles, selectProfile, updateProfile, status, connect, liveOledFrame }) {
+function KeysPage({ profile, profiles, selectProfile, updateProfile, usbStatus, bleStatus, bleConnecting, onOpenConnection, liveOledFrame }) {
   const [selected, setSelected] = useState(null);
+  const usbConnected = usbStatus.state === "connected";
+  const bleConnected = bleStatus.state === "connected";
+  const activeStatus = usbConnected ? usbStatus : bleStatus;
   const changeMapping = (next) => {
     updateProfile({ ...profile, mappings: profile.mappings.map((m) => m.key === next.key ? next : m) });
     setSelected(next);
   };
   return <>
-    <DeviceHero status={status} connect={connect}/>
+    <DeviceHero
+      connected={usbConnected || bleConnected}
+      mode={usbConnected ? "USB" : bleConnected ? "蓝牙" : null}
+      batteryPercent={activeStatus?.batteryPercent}
+      connecting={usbStatus.state === "connecting" || bleConnecting}
+      onOpenConnection={onOpenConnection}
+    />
     <section className="content-section">
       <div className="section-title"><div><p>按键布局</p><h2>选择一个按键进行配置</h2></div><div className="layer-control"><span>当前预设</span><label className="profile-select"><select aria-label="选择当前预设" value={profile.id} onChange={(event) => { setSelected(null); selectProfile(event.target.value); }}>{profiles.map((item) => <option key={item.id} value={item.id}>P{item.slot + 1} · {item.name}</option>)}</select><ChevronDown size={14}/></label></div></div>
       <div className="physical-key-layout">
         <div className="layout-oled">
           <LiveOledCanvas
             frame={liveOledFrame}
-            connected={status.state === "connected"}
+            connected={usbConnected}
           />
         </div>
         <div className="layout-knob"><div/><span>旋钮</span></div>
@@ -331,7 +354,7 @@ function KeysPage({ profile, profiles, selectProfile, updateProfile, status, con
 function OledPage({
   profile, updateProfile, runtime, updateRuntime, systemStatus, claudeStatus,
   deviceConnected, deviceMode, batteryPercent, batteryMillivolts,
-  usbStatus, bleStatus, bleConnecting, onConnectBle, onDisconnectBle,
+  onOpenConnection,
   onSaveCustomBitmap, savingCustomBitmap,
   onUploadAnimation, onDeleteAnimation, animationUploading, animationUploadProgress
 }) {
@@ -433,36 +456,17 @@ function OledPage({
     [animationProject, previewNow]
   );
   const metricValue = (value) => Number.isFinite(value) ? `${Math.round(value)}%` : "--";
-  const usbConnected = usbStatus?.state === "connected";
-  const bleConnected = bleStatus?.state === "connected";
-  const gattStatusText = usbConnected
-    ? "USB 配置通道已连接"
-    : bleConnected
-      ? `蓝牙 GATT 已连接${Number.isFinite(bleStatus?.batteryPercent) ? ` · ${bleStatus.batteryPercent}%` : ""}`
-      : bleConnecting
-        ? "正在查找 Vico Keyboard…"
-        : "蓝牙 GATT 未连接";
-
   return <section className="page-pad">
     <div className="page-heading oled-page-heading">
       <div className="icon-box"><Monitor/></div>
       <div><span>OLED STUDIO</span><h1>设计你的显示界面</h1><p>预览会实时呈现最终的 128 × 64 单色画面。</p></div>
-      <div className={`oled-gatt-control ${deviceConnected ? "online" : ""}`}>
-        <div className="oled-gatt-state">
-          <i/>
-          <div><b>{gattStatusText}</b><small>{usbConnected ? "OLED 修改将通过 USB 同步" : "用于同步 OLED 页面和状态信息"}</small></div>
-        </div>
-        <button
-          className="secondary"
-          disabled={bleConnecting || usbConnected}
-          onClick={bleConnected ? onDisconnectBle : onConnectBle}
-        >
-          {bleConnecting ? <RefreshCw className="spin" size={14}/> : usbConnected ? <Usb size={14}/> : bleConnected ? <Unplug size={14}/> : <Bluetooth size={14}/>}
-          {usbConnected ? "USB 已连接" : bleConnected ? "断开 GATT" : bleConnecting ? "连接中…" : "连接蓝牙 GATT"}
-        </button>
-      </div>
     </div>
-    {!deviceConnected && <div className="oled-connection-notice"><Bluetooth size={16}/><div><b>当前仅显示本地预览</b><span>Windows 已配对键盘并不代表配置用 GATT 已连接。点击上方“连接蓝牙 GATT”，连接后当前 OLED 页面会自动同步到键盘。</span></div></div>}
+    {!deviceConnected && <ConnectionNotice
+      icon={Monitor}
+      title="当前仅显示本地预览"
+      description="连接 Vico Keyboard 后，OLED 页面、亮度和状态信息会自动同步到小键盘。"
+      onOpenConnection={onOpenConnection}
+    />}
     <div className="oled-grid">
       <div className="oled-preview-card">
         <div className="card-label"><span>设备实时预览</span><span>128 × 64 · 1-BIT</span></div>
@@ -615,7 +619,7 @@ function OledPage({
   </section>;
 }
 
-function RgbPage({ settings, updateSettings, usbStatus, bleStatus, bleConnecting, onConnectBle, onDisconnectBle }) {
+function RgbPage({ settings, updateSettings, usbStatus, bleStatus, onOpenConnection }) {
   const usbConnected = usbStatus?.state === "connected";
   const bleConnected = bleStatus?.state === "connected";
   const connected = usbConnected || bleConnected;
@@ -643,16 +647,14 @@ function RgbPage({ settings, updateSettings, usbStatus, bleStatus, bleConnecting
     <div className="page-heading rgb-page-heading">
       <div className="icon-box"><Palette/></div>
       <div><span>RGB LIGHTING</span><h1>设计你的键盘灯光</h1><p>灯效参数通过 USB 或蓝牙 GATT 实时同步，并保存在键盘中。</p></div>
-      <div className={`rgb-connection ${connected ? "online" : ""}`}>
-        <i/><b>{usbConnected ? "USB 已连接" : bleConnected ? "蓝牙 GATT 已连接" : "设备未连接"}</b>
-        {!usbConnected && <button className="secondary" disabled={bleConnecting} onClick={bleConnected ? onDisconnectBle : onConnectBle}>
-          {bleConnecting ? <RefreshCw className="spin" size={14}/> : bleConnected ? <Unplug size={14}/> : <Bluetooth size={14}/>}
-          {bleConnecting ? "连接中…" : bleConnected ? "断开" : "连接蓝牙"}
-        </button>}
-      </div>
     </div>
 
-    {!connected && <div className="oled-connection-notice"><Palette size={16}/><div><b>当前为本地灯效预览</b><span>连接 USB 配置通道或蓝牙 GATT 后，模式、亮度、速度和常亮颜色会自动同步到键盘。</span></div></div>}
+    {!connected && <ConnectionNotice
+      icon={Palette}
+      title="当前为本地灯效预览"
+      description="连接 Vico Keyboard 后，灯效模式、亮度、速度和颜色会自动同步。"
+      onOpenConnection={onOpenConnection}
+    />}
 
     <div className="rgb-layout">
       <div className="rgb-preview-card">
@@ -879,6 +881,7 @@ export default function App() {
   const [animationUploadProgress, setAnimationUploadProgress] = useState(0);
   const [hooksInstalling, setHooksInstalling] = useState(false);
   const [deviceSelection, setDeviceSelection] = useState(null);
+  const [connectionCenterOpen, setConnectionCenterOpen] = useState(false);
   const [liveOledFrame, setLiveOledFrame] = useState(null);
   const [voiceDeviceEvent, setVoiceDeviceEvent] = useState(null);
   const [voiceTransferActive, setVoiceTransferActive] = useState(false);
@@ -1060,12 +1063,25 @@ export default function App() {
     }
   };
   const connect = async () => {
-    try { await deviceRef.current.request(); setToast("Vico Keyboard 已连接"); }
-    catch (error) { if (error.name !== "NotFoundError") setToast(error.message); }
+    try {
+      await deviceRef.current.request();
+      if (bleStatus.state === "connected") bleDeviceRef.current.disconnect();
+      setToast("Vico Keyboard 已通过 USB 连接");
+      return true;
+    } catch (error) {
+      if (error.name !== "NotFoundError") setToast(error.message);
+      return false;
+    }
   };
   const disconnect = async () => {
-    try { await deviceRef.current.disconnect(); setToast("USB 配置通道已断开"); }
-    catch (error) { setToast(error.message); }
+    try {
+      await deviceRef.current.disconnect();
+      setToast("USB 配置通道已断开");
+      return true;
+    } catch (error) {
+      setToast(error.message);
+      return false;
+    }
   };
   const sync = async () => {
     setSyncing(true);
@@ -1085,14 +1101,18 @@ export default function App() {
     setBleConnecting(true);
     try {
       await bleDeviceRef.current.request();
+      if (status.state === "connected") await deviceRef.current.disconnect();
       setToast("Vico 蓝牙状态通道已连接");
+      return true;
     } catch (error) {
       if (error.name !== "NotFoundError") setToast(error.message);
+      return false;
     } finally { setBleConnecting(false); }
   };
   const disconnectBle = () => {
     bleDeviceRef.current.disconnect();
     setToast("Vico 蓝牙状态通道已断开");
+    return true;
   };
   const saveCustomBitmap = async () => {
     setSavingCustomBitmap(true);
@@ -1170,9 +1190,26 @@ export default function App() {
   return <><GlobalSpeechController/><div className="app-shell">
     <Sidebar page={page} setPage={setPage}/>
     <main className="main">
-      <Header status={status} connect={connect} disconnect={disconnect} syncing={syncing} sync={sync}/>
+      <Header
+        usbStatus={status}
+        bleStatus={bleStatus}
+        bleConnecting={bleConnecting}
+        syncing={syncing}
+        sync={sync}
+        onOpenConnection={() => setConnectionCenterOpen(true)}
+      />
       <div className="scroll-area">
-        {page === "keys" && <KeysPage profile={profile} profiles={config.profiles} selectProfile={selectProfile} updateProfile={updateProfile} status={status} connect={connect} liveOledFrame={liveOledFrame}/>}
+        {page === "keys" && <KeysPage
+          profile={profile}
+          profiles={config.profiles}
+          selectProfile={selectProfile}
+          updateProfile={updateProfile}
+          usbStatus={status}
+          bleStatus={bleStatus}
+          bleConnecting={bleConnecting}
+          onOpenConnection={() => setConnectionCenterOpen(true)}
+          liveOledFrame={liveOledFrame}
+        />}
         {page === "oled" && (
           <OledPage
             profile={profile}
@@ -1185,11 +1222,7 @@ export default function App() {
             deviceMode={status.state === "connected" ? "USB" : bleStatus.state === "connected" ? "BLE" : "ADV"}
             batteryPercent={status.state === "connected" ? status.batteryPercent : bleStatus.batteryPercent}
             batteryMillivolts={status.state === "connected" ? status.batteryMillivolts : null}
-            usbStatus={status}
-            bleStatus={bleStatus}
-            bleConnecting={bleConnecting}
-            onConnectBle={connectBle}
-            onDisconnectBle={disconnectBle}
+            onOpenConnection={() => setConnectionCenterOpen(true)}
             onSaveCustomBitmap={saveCustomBitmap}
             savingCustomBitmap={savingCustomBitmap}
             onUploadAnimation={uploadAnimation}
@@ -1203,17 +1236,26 @@ export default function App() {
           updateSettings={(rgb) => setConfig((current) => ({ ...current, rgb }))}
           usbStatus={status}
           bleStatus={bleStatus}
-          bleConnecting={bleConnecting}
-          onConnectBle={connectBle}
-          onDisconnectBle={disconnectBle}
+          onOpenConnection={() => setConnectionCenterOpen(true)}
         />}
         {page === "profiles" && <ProfilesPage config={config} status={status} syncing={syncing} onSelectProfile={selectProfile} onSyncCurrent={sync} onSyncAll={syncAll}/>}
         {page === "firmware" && <FirmwarePage onPrepareFlash={prepareFirmwareFlash}/>}
-        {page === "claude" && <ClaudePage claudeStatus={claudeStatus} usbStatus={status} bleStatus={bleStatus} hooksState={hooksState} activity={activity} connecting={bleConnecting} installing={hooksInstalling} onConnect={connectBle} onDisconnect={disconnectBle} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
-        {page === "speech" && <SpeechPage deviceEvent={voiceDeviceEvent} usbStatus={status} bleStatus={bleStatus} onConnectBle={connectBle} connecting={bleConnecting}/>}
+        {page === "claude" && <ClaudePage claudeStatus={claudeStatus} usbStatus={status} bleStatus={bleStatus} hooksState={hooksState} activity={activity} installing={hooksInstalling} onOpenConnection={() => setConnectionCenterOpen(true)} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
+        {page === "speech" && <SpeechPage deviceEvent={voiceDeviceEvent} usbStatus={status} bleStatus={bleStatus} onOpenConnection={() => setConnectionCenterOpen(true)}/>}
         {page === "settings" && <SettingsPage config={config} setConfig={setConfig} version={version}/>}
       </div>
     </main>
+    <DeviceConnectionCenter
+      open={connectionCenterOpen}
+      onClose={() => setConnectionCenterOpen(false)}
+      usbStatus={status}
+      bleStatus={bleStatus}
+      bleConnecting={bleConnecting}
+      onConnectUsb={connect}
+      onDisconnectUsb={disconnect}
+      onConnectBle={connectBle}
+      onDisconnectBle={disconnectBle}
+    />
     <DeviceSelectionDialog request={deviceSelection} onSelect={selectDevice}/>
     {toast && <div className="toast" onAnimationEnd={() => setToast("")}><Sparkles size={15}/>{toast}</div>}
   </div></>;

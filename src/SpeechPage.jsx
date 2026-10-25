@@ -45,7 +45,7 @@ function shortcutLabel(value) {
     .replaceAll("+", " + ");
 }
 
-export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnectBle, connecting }) {
+export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onOpenConnection }) {
   const [cloud, setCloud] = useState(null);
   const [apiKey, setApiKey] = useState("");
   const [providerConfig, setProviderConfig] = useState({});
@@ -331,7 +331,7 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onConnec
         <div className="speech-device-line">
           <Radio size={14}/>
           <span>{connected ? `${usbStatus.state === "connected" ? "USB" : "BLE"} 键盘语音通道已连接` : "键盘麦克风通道未连接（不影响电脑录音）"}</span>
-          {!connected && <button onClick={onConnectBle} disabled={connecting}><Bluetooth size={14}/>{connecting ? "连接中…" : "连接蓝牙"}</button>}
+          {!connected && <button onClick={onOpenConnection}><Bluetooth size={14}/>连接设备</button>}
         </div>
         <div className="speech-instruction">
           <KeyRound/><div><b>可选：键盘麦克风</b><span>固件支持时，按住旋钮录音，松开后也会自动识别</span></div>

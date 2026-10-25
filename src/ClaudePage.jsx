@@ -9,7 +9,6 @@ import {
   Radio,
   RefreshCw,
   TerminalSquare,
-  Unplug,
   Usb
 } from "lucide-react";
 
@@ -34,10 +33,8 @@ export default function ClaudePage({
   bleStatus,
   hooksState,
   activity,
-  connecting,
   installing,
-  onConnect,
-  onDisconnect,
+  onOpenConnection,
   onInstallHooks,
   onSendTest
 }) {
@@ -106,9 +103,9 @@ export default function ClaudePage({
         </div>
         <div className="relay-step">
           <div className={transportConnected ? "done" : ""}>{transportConnected ? <CheckCircle2 /> : "2"}</div>
-          <section><b>连接 Vico Keyboard</b><p>USB 配置通道可直接转发；蓝牙模式使用自定义 GATT 服务。</p></section>
-          <button className="secondary" disabled={connecting || usbConnected} onClick={bleConnected ? onDisconnect : onConnect}>
-            {connecting ? <RefreshCw className="spin" size={14} /> : bleConnected ? <Unplug size={14}/> : usbConnected ? <Usb size={14}/> : null}{usbConnected ? "USB 已连接" : bleConnected ? "断开" : connecting ? "连接中" : "选择蓝牙"}
+          <section><b>连接 Vico Keyboard</b><p>{transportConnected ? `当前通过${usbConnected ? " USB" : "蓝牙"}转发；需要时可在全局连接中心切换。` : "从顶部连接中心选择 USB 或蓝牙通信方式。"}</p></section>
+          <button className="secondary" onClick={onOpenConnection}>
+            {usbConnected ? <Usb size={14}/> : bleConnected ? <Bluetooth size={14}/> : null}{transportConnected ? "管理连接" : "连接设备"}
           </button>
         </div>
         <div className="relay-actions">
