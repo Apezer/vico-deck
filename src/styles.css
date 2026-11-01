@@ -381,6 +381,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .speech-provider-region b { color:#cbd2d9;font-weight:500; }
 .speech-provider-region code { padding:3px 6px;border-radius:4px;background:rgba(214,255,56,.07);color:var(--accent);font-size:8px; }
 .speech-cloud-card>.speech-token-hint { margin:7px 0 0;color:#9a8f68; }
+.speech-key-heading { margin-top:13px;display:flex;align-items:center;justify-content:space-between;gap:10px; }
+.speech-key-heading>span { color:#8d97a3;font-size:8px; }
+.speech-key-heading>button { padding:0;border:0;background:transparent;color:#a9bb65;font-size:8px;display:flex;align-items:center;gap:4px;cursor:pointer; }
+.speech-key-heading>button:hover { color:var(--accent); }
 .speech-key-status { min-height:34px;padding:0 10px;display:flex;align-items:center;gap:6px;border:1px solid #29313a;background:#0b0e12;color:#8d97a3;font-size:9px;border-radius:6px; }
 .speech-key-status svg { width:13px;color:var(--accent); }
 .speech-key-row { display:grid;grid-template-columns:1fr auto;gap:7px;margin-top:8px; }

@@ -1,9 +1,11 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
-  AudioLines, Bluetooth, Check, Cloud, Copy, Download, KeyRound,
+  AudioLines, Bluetooth, Check, CircleHelp, Cloud, Copy, Download, KeyRound,
   LoaderCircle, Mic, Radio, Square, Trash2, Upload, X
 } from "lucide-react";
 import { useRecorder } from "./useRecorder";
+
+const API_KEY_GUIDE_URL = "https://www.vicovico.xyz/manual.html#voice";
 
 const defaultOptions = {
   enableDdc:true,
@@ -292,6 +294,13 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onOpenCo
   };
 
   const setOption = (name, value) => setOptions((current) => ({ ...current, [name]:value }));
+  const openApiKeyGuide = () => {
+    if (window.vico?.openExternal) {
+      void window.vico.openExternal(API_KEY_GUIDE_URL);
+      return;
+    }
+    window.open(API_KEY_GUIDE_URL, "_blank", "noopener,noreferrer");
+  };
 
   return <section className="page-pad speech-page">
     <div className="page-heading">
@@ -355,6 +364,12 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onOpenCo
             <div className="speech-provider-region"><span>API Key 类型</span><b>{providerConfig.accessMode === "tokenPlanCn" ? "Token Plan" : "按量付费"}</b><code>{providerConfig.accessMode === "tokenPlanCn" ? "tp- / ttp-" : "sk-"}</code></div>
           </>}
           <p>认证凭据仅以 Windows DPAPI 加密文件保存在本机，不写入普通设置或日志。</p>
+          <div className="speech-key-heading">
+            <span>{activeProvider?.credentialLabel || "API Key"}</span>
+            <button type="button" onClick={openApiKeyGuide} aria-label="打开获取 API Key 教程">
+              <CircleHelp size={13}/>获取 API Key 教程
+            </button>
+          </div>
           <div className="speech-key-status">{cloud?.configured ? <><Check/>已配置 · {cloud.masked}</> : cloud?.credentialSaved ? <>凭据已保存 · 请补充必要配置</> : `尚未配置${activeProvider?.credentialLabel || "认证凭据"}`}</div>
           <div className="speech-key-row"><input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={cloud?.provider === "mimo" ? `输入${providerConfig.accessMode === "tokenPlanCn" ? "Token Plan" : "按量付费"} API Key` : `输入${activeProvider?.credentialLabel || "认证凭据"}`}/><button disabled={!cloud || busy || (!apiKey.trim() && !cloud?.credentialSaved)} onClick={saveProvider}>保存设置</button></div>
           {cloud?.credentialSaved && <button className="speech-clear-key" disabled={busy} onClick={clearCredential}><Trash2 size={13}/>删除已保存密钥</button>}
