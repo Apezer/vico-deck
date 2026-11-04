@@ -161,7 +161,7 @@ function requestDeviceSelection(type, devices, callback) {
   if (type === "bluetooth" && pendingDeviceSelection?.type === "bluetooth") {
     pendingDeviceSelection.callback = callback;
     pendingDeviceSelection.deviceIds = new Set(normalized.map((device) => device.id));
-    mainWindow.webContents.send("device:selection-requested", {
+    sendToMainWindow("device:selection-requested", {
       requestId: pendingDeviceSelection.requestId,
       type,
       devices: normalized
@@ -177,9 +177,7 @@ function requestDeviceSelection(type, devices, callback) {
     callback,
     deviceIds: new Set(normalized.map((device) => device.id))
   };
-  mainWindow.show();
-  mainWindow.focus();
-  mainWindow.webContents.send("device:selection-requested", {
+  sendToMainWindow("device:selection-requested", {
     requestId,
     type,
     devices: normalized
@@ -251,7 +249,7 @@ async function runBleBridgeCommand(request) {
   );
 }
 
-function createWindow() {
+function createWindow({ forceShow = false } = {}) {
   const config = readConfig();
   const iconPath = path.join(__dirname, "..", "asserts", "vico-keyboard.ico");
   mainWindow = new BrowserWindow({
@@ -259,7 +257,7 @@ function createWindow() {
     height: 820,
     minWidth: 1060,
     minHeight: 680,
-    show: !(config.launchMinimized && process.argv.includes("--hidden")),
+    show: forceShow || !(config.launchMinimized && process.argv.includes("--hidden")),
     backgroundColor: "#090b0f",
     icon: iconPath,
     titleBarStyle: "hidden",
@@ -291,8 +289,50 @@ function createWindow() {
     if (!isQuitting && current.closeToTray) {
       event.preventDefault();
       mainWindow.hide();
+      return;
+    }
+    if (!isQuitting) {
+      // 后台蓝牙桥接窗口也属于 BrowserWindow，因此不能依赖 window-all-closed
+      // 判断主窗口关闭。关闭托盘模式时直接退出整个应用并清理后台服务。
+      event.preventDefault();
+      isQuitting = true;
+      app.quit();
     }
   });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+    cancelPendingDeviceSelection();
+  });
+
+  return mainWindow;
+}
+
+/** 显示可用的主窗口；原窗口已销毁时重新创建，避免托盘回调访问失效对象。 */
+function showMainWindow() {
+  if (isQuitting) return null;
+  if (!app.isReady()) {
+    app.whenReady().then(showMainWindow);
+    return null;
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow({ forceShow:true });
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  return mainWindow;
+}
+
+/**
+ * 向主窗口发送消息。重新创建窗口时等待页面加载完成，确保渲染进程已注册监听器。
+ */
+function sendToMainWindow(channel, payload) {
+  const target = showMainWindow();
+  if (!target) return;
+  const send = () => {
+    if (!target.isDestroyed()) target.webContents.send(channel, payload);
+  };
+  if (target.webContents.isLoading()) target.webContents.once("did-finish-load", send);
+  else send();
 }
 
 function createTray() {
@@ -301,11 +341,11 @@ function createTray() {
   tray = new Tray(icon);
   tray.setToolTip("VicoDeck");
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "打开 VicoDeck", click: () => { mainWindow.show(); mainWindow.focus(); } },
+    { label: "打开 VicoDeck", click:showMainWindow },
     { type: "separator" },
     { label: "退出", click: () => { isQuitting = true; app.quit(); } }
   ]));
-  tray.on("double-click", () => { mainWindow.show(); mainWindow.focus(); });
+  tray.on("double-click", showMainWindow);
 }
 
 function parseSpeechShortcut(value) {
@@ -467,17 +507,12 @@ app.whenReady().then(() => {
     requestDeviceSelection("serial", portList, callback);
   });
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    else mainWindow.show();
+    showMainWindow();
   });
 });
 
 app.on("second-instance", () => {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-  }
+  showMainWindow();
 });
 
 app.on("window-all-closed", () => {
