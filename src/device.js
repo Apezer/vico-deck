@@ -82,10 +82,16 @@ export class VicoDevice {
   }
 
   async restore() {
-    if (!navigator.hid) return this.onStatus({ state: "unsupported" });
+    if (!navigator.hid) {
+      const status = { state:"unsupported" };
+      this.onStatus(status);
+      return status;
+    }
+    if (this.device?.opened && this.connectedStatus) return this.connectedStatus;
     const devices = await navigator.hid.getDevices();
     const found = devices.find(isVicoUsbDevice);
-    if (found) await this.open(found);
+    if (found) return this.open(found);
+    return { state:"disconnected" };
   }
 
   async request() {
@@ -152,6 +158,7 @@ export class VicoDevice {
         batteryMillivolts: info.batteryMillivolts,
         animation:info.animation
       };
+      return this.connectedStatus;
     } catch (error) {
       device.removeEventListener("inputreport", this.handleInputReport);
       if (device.opened) await device.close().catch(() => {});
@@ -612,8 +619,21 @@ export class VicoBleDevice {
     }
   }
 
-  async restore() {
-    const status = await this.bridge().command("restore");
+  async restore({ fast = false } = {}) {
+    if (this.sessionActive && this.connectedStatus) return this.connectedStatus;
+    const status = await this.bridge().command("restore", { fast:Boolean(fast) });
+    if (status?.state === "connected") {
+      this.applyConnectedStatus(status);
+      await this.setVoiceSession(true).catch(() => {});
+    } else if (status?.state === "unsupported") {
+      this.onStatus(status);
+    }
+    return status;
+  }
+
+  async autoConnect() {
+    if (this.sessionActive && this.connectedStatus) return this.connectedStatus;
+    const status = await this.bridge().command("auto-connect");
     if (status?.state === "connected") {
       this.applyConnectedStatus(status);
       await this.setVoiceSession(true).catch(() => {});

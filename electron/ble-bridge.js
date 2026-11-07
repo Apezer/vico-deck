@@ -58,20 +58,20 @@ function handleUnexpectedDisconnect() {
   emit({ type:"unexpected-disconnect" });
 }
 
-async function connectAndDiscover(candidate) {
+async function connectAndDiscover(candidate, { attempts = SERVICE_DISCOVERY_ATTEMPTS, timeout = CONNECT_TIMEOUT_MS } = {}) {
   let lastError;
-  for (let attempt = 0; attempt < SERVICE_DISCOVERY_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const server = candidate.gatt.connected
         ? candidate.gatt
-        : await withTimeout(candidate.gatt.connect(), "蓝牙连接超时，请唤醒键盘后重试");
-      const service = await withTimeout(server.getPrimaryService(SERVICE_UUID), "Vico 状态服务发现超时");
+        : await withTimeout(candidate.gatt.connect(), "蓝牙连接超时，请唤醒键盘后重试", timeout);
+      const service = await withTimeout(server.getPrimaryService(SERVICE_UUID), "Vico 状态服务发现超时", timeout);
       return { server, service };
     } catch (error) {
       lastError = error;
       candidate.removeEventListener("gattserverdisconnected", handleUnexpectedDisconnect);
       if (candidate.gatt.connected) candidate.gatt.disconnect();
-      if (attempt + 1 < SERVICE_DISCOVERY_ATTEMPTS) {
+      if (attempt + 1 < attempts) {
         await wait(500 * (attempt + 1));
         candidate.addEventListener("gattserverdisconnected", handleUnexpectedDisconnect);
       }
@@ -91,7 +91,7 @@ async function writePackets(packets) {
   return true;
 }
 
-async function open(candidate) {
+async function open(candidate, connectionOptions = {}) {
   if (!isVicoKeyboard(candidate)) throw new Error("所选设备不是 Vico Keyboard");
 
   // 软件内的“断开”仅暂停会话；物理 GATT 未断开时可快速恢复。
@@ -114,7 +114,7 @@ async function open(candidate) {
   emit({ type:"connecting", name:candidate.name || "Vico Keyboard" });
 
   try {
-    const { server, service } = await connectAndDiscover(candidate);
+    const { server, service } = await connectAndDiscover(candidate, connectionOptions);
     rx = await withTimeout(service.getCharacteristic(RX_UUID), "读取蓝牙发送通道超时");
     tx = await withTimeout(service.getCharacteristic(TX_UUID), "读取蓝牙通知通道超时");
 
@@ -155,12 +155,35 @@ async function authorizedDevices() {
   return (await navigator.bluetooth.getDevices()).filter(isVicoKeyboard);
 }
 
-async function restore() {
+async function restore(fast = false) {
   if (!navigator.bluetooth) return { state:"unsupported" };
   for (const candidate of await authorizedDevices()) {
-    try { return await open(candidate); } catch { /* 继续尝试其他精确匹配的授权设备。 */ }
+    try {
+      return await open(candidate, fast ? { attempts:1, timeout:4000 } : {});
+    } catch { /* 继续尝试其他精确匹配的授权设备。 */ }
   }
   return { state:"disconnected" };
+}
+
+/**
+ * Electron 33 没有实现 Bluetooth.getDevices()。自动连接因此需要发起一次
+ * requestDevice() 扫描，由主进程静默选择名称精确匹配的 Vico Keyboard。
+ */
+async function autoConnect() {
+  if (!navigator.bluetooth) return { state:"unsupported" };
+  let selected = null;
+  emit({ type:"connecting", name:"Vico Keyboard" });
+  try {
+    selected = await navigator.bluetooth.requestDevice({
+      filters:[{ name:"Vico Keyboard" }],
+      optionalServices:[SERVICE_UUID, BATTERY_SERVICE_UUID]
+    });
+    return open(selected);
+  } catch (error) {
+    // open() 失败时会自行发送断开事件；扫描阶段没有设备时在这里复位界面。
+    if (!selected) emit({ type:"disconnected" });
+    throw error;
+  }
 }
 
 async function connect() {
@@ -184,7 +207,8 @@ async function disconnect() {
 
 async function execute(request = {}) {
   switch (request.type) {
-    case "restore": return restore();
+    case "restore": return restore(Boolean(request.fast));
+    case "auto-connect": return autoConnect();
     case "connect": return connect();
     case "disconnect": return disconnect();
     case "write": return writePackets(request.packets || []);

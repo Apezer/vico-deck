@@ -10,6 +10,7 @@ import ClaudePage from "./ClaudePage";
 import SpeechPage from "./SpeechPage";
 import FirmwarePage from "./FirmwarePage";
 import DeviceConnectionCenter, { ConnectionNotice } from "./DeviceConnectionCenter";
+import { AUTO_CONNECT_INTERVALS, AutoConnectionManager } from "./auto-connection";
 import GlobalSpeechController from "./GlobalSpeechController";
 import LiveOledCanvas from "./LiveOledCanvas";
 import OledPixelCanvas from "./OledPixelCanvas";
@@ -37,6 +38,7 @@ const HELP_URL = "http://vico.zheng2005.xyz/manual.html";
 const fallbackConfig = {
   schemaVersion: 2,
   startAtLogin: false, minimizeToTray: true, closeToTray: true,
+  autoConnect: true, autoConnectIntervalSeconds: 30, lastTransport: null,
   speechShortcut: "CommandOrControl+Alt+I",
   oledRuntime: { page:"brand", autoClaude:true },
   rgb: { effect:0, brightness:50, speed:100, enabled:true, color:"#D6FF38" },
@@ -763,7 +765,7 @@ function shortcutFromEvent(event) {
   return [...modifiers, key].join("+");
 }
 
-function SettingsPage({ config, setConfig, version }) {
+function SettingsPage({ config, setConfig, version, autoConnection, usbStatus, bleStatus, onRetryAutoConnection }) {
   const [capturingShortcut, setCapturingShortcut] = useState(false);
   const [shortcutMessage, setShortcutMessage] = useState("");
   const [updateState, setUpdateState] = useState({
@@ -779,6 +781,29 @@ function SettingsPage({ config, setConfig, version }) {
     ["关闭窗口时最小化到托盘", "保持按键服务与设备连接", config.closeToTray, (v) => setConfig({ ...config, closeToTray:v })],
     ["启动时隐藏主窗口", "配合开机自启动安静运行", config.launchMinimized, (v) => setConfig({ ...config, launchMinimized:v })]
   ];
+  // 下拉框始终使用配置值。设备已连接时管理器不会重新发布连接状态，
+  // 如果优先读取其旧状态，用户刚选择的新间隔会在界面上跳回旧值。
+  const configuredAutoConnectInterval = Number(config.autoConnectIntervalSeconds);
+  const autoConnectInterval = AUTO_CONNECT_INTERVALS.includes(configuredAutoConnectInterval)
+    ? configuredAutoConnectInterval
+    : 30;
+  const connectedTransport = usbStatus?.state === "connected"
+    ? "usb"
+    : bleStatus?.state === "connected" ? "ble" : null;
+  const connectionIndicatorState = connectedTransport
+    ? "connected"
+    : usbStatus?.state === "connecting" || bleStatus?.state === "connecting" || autoConnection.state === "connecting"
+      ? "connecting"
+      : "disconnected";
+  const connectionIndicatorLabel = connectionIndicatorState === "connected"
+    ? "小键盘已连接"
+    : connectionIndicatorState === "connecting" ? "正在连接小键盘" : "小键盘未连接";
+  const autoConnectStatus = connectedTransport
+    ? connectedTransport === "ble" ? "已通过蓝牙连接" : "已通过 USB 连接"
+    : autoConnection.state === "connecting" ? "正在按 USB → 蓝牙顺序搜索小键盘…"
+      : autoConnection.state === "retrying" ? `未发现设备，将按 ${autoConnectInterval} 秒间隔继续尝试`
+        : autoConnection.state === "paused" ? "已因用户主动断开而暂停"
+          : config.autoConnect ? "正在等待已授权的小键盘" : "自动连接已关闭";
   useEffect(() => {
     if (capturingShortcut) shortcutButton.current?.focus();
   }, [capturingShortcut]);
@@ -846,7 +871,16 @@ function SettingsPage({ config, setConfig, version }) {
 
   return <section className="page-pad settings-page">
     <div className="page-heading"><div className="icon-box"><Settings/></div><div><span>PREFERENCES</span><h1>应用设置</h1><p>控制后台服务、启动方式与更新策略。</p></div></div>
-    <div className="settings-block"><h2>启动与后台</h2>{rows.map(([title, sub, value, change]) => <div className="setting-row" key={title}><div><b>{title}</b><span>{sub}</span></div><Toggle value={value} onChange={change}/></div>)}</div>
+    <div className="settings-block"><h2>启动与后台</h2>{rows.map(([title, sub, value, change]) => <div className="setting-row" key={title}><div><b>{title}</b><span>{sub}</span></div><Toggle value={value} onChange={change}/></div>)}
+      <div className="setting-row auto-connect-setting">
+        <div><b className="auto-connect-title"><i className={`auto-connect-indicator ${connectionIndicatorState}`} aria-hidden="true"/><span className="sr-only">{connectionIndicatorLabel}</span>自动连接 Vico Keyboard</b><span>软件启动、键盘唤醒或物理断线后，按 USB → 蓝牙顺序自动发现并连接小键盘</span><small>{autoConnectStatus}</small></div>
+        <div className="auto-connect-controls">
+          <label><span>尝试间隔</span><select disabled={!config.autoConnect} value={autoConnectInterval} onChange={(event) => setConfig({ ...config, autoConnectIntervalSeconds:Number(event.target.value) })}>{AUTO_CONNECT_INTERVALS.map((seconds) => <option value={seconds} key={seconds}>{seconds < 60 ? `${seconds} 秒` : `${seconds / 60} 分钟`}</option>)}</select></label>
+          <button className="secondary" disabled={!config.autoConnect || autoConnection.state === "connecting" || autoConnection.state === "connected"} onClick={onRetryAutoConnection}><RefreshCw size={14}/>立即尝试</button>
+          <Toggle value={config.autoConnect} onChange={(value) => setConfig({ ...config, autoConnect:value })}/>
+        </div>
+      </div>
+    </div>
     <div className="settings-block"><h2>语音输入</h2>
       <div className="setting-row speech-shortcut-setting">
         <div><b>按住说话快捷键</b><span>按下开始录音，松开后识别并输入到原聊天框</span>{shortcutMessage && <small>{shortcutMessage}</small>}</div>
@@ -885,8 +919,11 @@ export default function App() {
   const [liveOledFrame, setLiveOledFrame] = useState(null);
   const [voiceDeviceEvent, setVoiceDeviceEvent] = useState(null);
   const [voiceTransferActive, setVoiceTransferActive] = useState(false);
+  const [autoConnection, setAutoConnection] = useState({ state:"idle", intervalSeconds:30, nextAttemptAt:null });
   const deviceRef = useRef(null);
   const bleDeviceRef = useRef(null);
+  const autoConnectionRef = useRef(null);
+  const voiceTransferActiveRef = useRef(false);
   const saveTimer = useRef(null);
   const rgbSyncTimer = useRef(null);
   const lastDeviceProfile = useRef(null);
@@ -919,9 +956,19 @@ export default function App() {
       }
     };
     deviceRef.current = new VicoDevice(setStatus, setLiveOledFrame, receiveRuntimeSettings, receiveVoiceEvent);
-    deviceRef.current.restore().catch(() => {});
     bleDeviceRef.current = new VicoBleDevice(setBleStatus, () => {}, receiveRuntimeSettings, receiveVoiceEvent);
-    bleDeviceRef.current.restore().catch(() => {});
+    autoConnectionRef.current = new AutoConnectionManager({
+      restoreUsb:() => deviceRef.current.restore(),
+      restoreBle:() => bleDeviceRef.current.autoConnect(),
+      disconnectUsb:() => deviceRef.current.disconnect(),
+      disconnectBle:() => bleDeviceRef.current.disconnect(),
+      isConnected:() => Boolean(deviceRef.current?.device?.opened || bleDeviceRef.current?.sessionActive),
+      isBusy:() => voiceTransferActiveRef.current,
+      onState:setAutoConnection,
+      onConnected:(transport) => setConfig((current) => current && current.lastTransport !== transport
+        ? { ...current, lastTransport:transport }
+        : current)
+    });
     Promise.all([
       window.vico?.getConfig?.() || fallbackConfig,
       window.vico?.getAutostart?.() ?? false,
@@ -931,9 +978,16 @@ export default function App() {
       window.vico?.getSystemStatus?.()
     ]).then(([saved, autostart, appVersion, initialClaudeStatus, initialHooksState, initialSystemStatus]) => {
       const savedRuntime = saved?.oledRuntime || fallbackConfig.oledRuntime;
+      const savedAutoConnectInterval = Number(saved?.autoConnectIntervalSeconds);
       setConfig({
         ...fallbackConfig,
         ...saved,
+        autoConnectIntervalSeconds:AUTO_CONNECT_INTERVALS.includes(savedAutoConnectInterval)
+          ? savedAutoConnectInterval
+          : fallbackConfig.autoConnectIntervalSeconds,
+        lastTransport:saved?.lastTransport === "usb" || saved?.lastTransport === "ble"
+          ? saved.lastTransport
+          : null,
         oledRuntime:{
           ...savedRuntime,
           page:savedRuntime.page === "auto"
@@ -963,8 +1017,29 @@ export default function App() {
       removeClaudeListener?.();
       removeSystemListener?.();
       removeDeviceSelectionListener?.();
+      autoConnectionRef.current?.stop();
     };
   }, []);
+
+  useEffect(() => {
+    if (!config || !autoConnectionRef.current) return;
+    autoConnectionRef.current.configure({
+      enabled:config.autoConnect !== false,
+      intervalSeconds:config.autoConnectIntervalSeconds,
+      lastTransport:config.lastTransport
+    });
+  }, [config?.autoConnect, config?.autoConnectIntervalSeconds, config?.lastTransport]);
+
+  useEffect(() => {
+    voiceTransferActiveRef.current = voiceTransferActive;
+    autoConnectionRef.current?.setBusy(voiceTransferActive);
+  }, [voiceTransferActive]);
+
+  useEffect(() => {
+    if (status.state === "connected") autoConnectionRef.current?.notifyConnected("usb");
+    else if (bleStatus.state === "connected") autoConnectionRef.current?.notifyConnected("ble");
+    else autoConnectionRef.current?.notifyDisconnected();
+  }, [status.state, bleStatus.state, config?.autoConnect]);
 
   useEffect(() => {
     if (!config || voiceTransferActive) return;
@@ -1063,17 +1138,21 @@ export default function App() {
     }
   };
   const connect = async () => {
+    autoConnectionRef.current?.beginManualConnect();
     try {
       await deviceRef.current.request();
       if (bleStatus.state === "connected") bleDeviceRef.current.disconnect();
+      autoConnectionRef.current?.finishManualConnect(true, "usb");
       setToast("Vico Keyboard 已通过 USB 连接");
       return true;
     } catch (error) {
+      autoConnectionRef.current?.finishManualConnect(false);
       if (error.name !== "NotFoundError") setToast(error.message);
       return false;
     }
   };
   const disconnect = async () => {
+    autoConnectionRef.current?.pauseForManualDisconnect();
     try {
       await deviceRef.current.disconnect();
       setToast("USB 配置通道已断开");
@@ -1098,18 +1177,22 @@ export default function App() {
     finally { setSyncing(false); }
   };
   const connectBle = async () => {
+    autoConnectionRef.current?.beginManualConnect();
     setBleConnecting(true);
     try {
       await bleDeviceRef.current.request();
       if (status.state === "connected") await deviceRef.current.disconnect();
+      autoConnectionRef.current?.finishManualConnect(true, "ble");
       setToast("Vico 蓝牙状态通道已连接");
       return true;
     } catch (error) {
+      autoConnectionRef.current?.finishManualConnect(false);
       if (error.name !== "NotFoundError") setToast(error.message);
       return false;
     } finally { setBleConnecting(false); }
   };
   const disconnectBle = () => {
+    autoConnectionRef.current?.pauseForManualDisconnect();
     bleDeviceRef.current.disconnect();
     setToast("Vico 蓝牙状态通道已断开");
     return true;
@@ -1193,7 +1276,7 @@ export default function App() {
       <Header
         usbStatus={status}
         bleStatus={bleStatus}
-        bleConnecting={bleConnecting}
+        bleConnecting={bleConnecting || bleStatus.state === "connecting"}
         syncing={syncing}
         sync={sync}
         onOpenConnection={() => setConnectionCenterOpen(true)}
@@ -1206,7 +1289,7 @@ export default function App() {
           updateProfile={updateProfile}
           usbStatus={status}
           bleStatus={bleStatus}
-          bleConnecting={bleConnecting}
+          bleConnecting={bleConnecting || bleStatus.state === "connecting"}
           onOpenConnection={() => setConnectionCenterOpen(true)}
           liveOledFrame={liveOledFrame}
         />}
@@ -1242,7 +1325,7 @@ export default function App() {
         {page === "firmware" && <FirmwarePage onPrepareFlash={prepareFirmwareFlash}/>}
         {page === "claude" && <ClaudePage claudeStatus={claudeStatus} usbStatus={status} bleStatus={bleStatus} hooksState={hooksState} activity={activity} installing={hooksInstalling} onOpenConnection={() => setConnectionCenterOpen(true)} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
         {page === "speech" && <SpeechPage deviceEvent={voiceDeviceEvent} usbStatus={status} bleStatus={bleStatus} onOpenConnection={() => setConnectionCenterOpen(true)}/>}
-        {page === "settings" && <SettingsPage config={config} setConfig={setConfig} version={version}/>}
+        {page === "settings" && <SettingsPage config={config} setConfig={setConfig} version={version} autoConnection={autoConnection} usbStatus={status} bleStatus={bleStatus} onRetryAutoConnection={() => autoConnectionRef.current?.retryNow()}/>}
       </div>
     </main>
     <DeviceConnectionCenter
@@ -1250,7 +1333,7 @@ export default function App() {
       onClose={() => setConnectionCenterOpen(false)}
       usbStatus={status}
       bleStatus={bleStatus}
-      bleConnecting={bleConnecting}
+      bleConnecting={bleConnecting || bleStatus.state === "connecting"}
       onConnectUsb={connect}
       onDisconnectUsb={disconnect}
       onConnectBle={connectBle}

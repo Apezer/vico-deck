@@ -128,7 +128,7 @@ export default function DeviceConnectionCenter({
 
       <div className="connection-center-note">
         <RefreshCw size={15}/>
-        <div><b>自动恢复连接</b><span>软件启动或键盘唤醒后，会尝试恢复上次已经授权的设备。用户主动断开后，可从这里重新连接。</span></div>
+        <div><b>自动恢复连接</b><span>软件启动或键盘唤醒后，会先检查 USB，再扫描并连接 Vico Keyboard 蓝牙 GATT。用户主动断开后，可从这里重新连接。</span></div>
       </div>
     </aside>
   </div>;

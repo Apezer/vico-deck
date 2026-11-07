@@ -39,6 +39,7 @@ let speechTargetWindowHandle = "0";
 let speechShortcutRegistered = false;
 let activeSpeechShortcut = "CommandOrControl+Alt+I";
 let pendingDeviceSelection = null;
+let pendingAutomaticBluetoothSelection = null;
 let deviceSelectionSequence = 0;
 let bleBridgeWindow = null;
 let bleBridgeReady = null;
@@ -72,6 +73,9 @@ const defaults = {
   minimizeToTray: true,
   closeToTray: true,
   launchMinimized: false,
+  autoConnect: true,
+  autoConnectIntervalSeconds: 30,
+  lastTransport: null,
   theme: "dark",
   speechShortcut: DEFAULT_SPEECH_SHORTCUT,
   oledRuntime: { page:"brand", autoClaude:true },
@@ -126,6 +130,34 @@ function cancelPendingDeviceSelection() {
   if (!pendingDeviceSelection) return;
   pendingDeviceSelection.callback("");
   pendingDeviceSelection = null;
+}
+
+/**
+ * 自动连接时不打开设备选择窗口，只在扫描结果中接受名称完全匹配的
+ * Vico Keyboard。超时后通过空设备 ID 结束本轮 Web Bluetooth 请求。
+ */
+function finishAutomaticBluetoothSelection(deviceId = "") {
+  if (!pendingAutomaticBluetoothSelection) return;
+  const { callback, timer } = pendingAutomaticBluetoothSelection;
+  pendingAutomaticBluetoothSelection = null;
+  clearTimeout(timer);
+  callback?.(deviceId);
+}
+
+function beginAutomaticBluetoothSelection(timeoutMs = 8000) {
+  finishAutomaticBluetoothSelection();
+  cancelPendingDeviceSelection();
+  const timer = setTimeout(() => finishAutomaticBluetoothSelection(), timeoutMs);
+  timer.unref?.();
+  pendingAutomaticBluetoothSelection = { callback:null, timer };
+}
+
+function handleAutomaticBluetoothSelection(devices, callback) {
+  if (!pendingAutomaticBluetoothSelection) return false;
+  pendingAutomaticBluetoothSelection.callback = callback;
+  const keyboard = devices.find((device) => /^vico keyboard$/i.test(device.deviceName || ""));
+  if (keyboard?.deviceId) finishAutomaticBluetoothSelection(keyboard.deviceId);
+  return true;
 }
 
 function requestDeviceSelection(type, devices, callback) {
@@ -204,6 +236,7 @@ function createBleBridgeWindow() {
   });
   bleBridgeWindow.webContents.on("select-bluetooth-device", (event, deviceList, callback) => {
     event.preventDefault();
+    if (handleAutomaticBluetoothSelection(deviceList, callback)) return;
     requestDeviceSelection("bluetooth", deviceList, callback);
   });
   bleBridgeReady = new Promise((resolve, reject) => {
@@ -222,6 +255,7 @@ function createBleBridgeWindow() {
 }
 
 function destroyBleBridgeWindow() {
+  finishAutomaticBluetoothSelection();
   cancelPendingDeviceSelection();
   if (bleBridgeWindow && !bleBridgeWindow.isDestroyed()) bleBridgeWindow.destroy();
   bleBridgeWindow = null;
@@ -229,7 +263,7 @@ function destroyBleBridgeWindow() {
 }
 
 async function runBleBridgeCommand(request) {
-  const allowedCommands = new Set(["restore", "connect", "disconnect", "write"]);
+  const allowedCommands = new Set(["restore", "auto-connect", "connect", "disconnect", "write"]);
   if (!request || !allowedCommands.has(request.type)) throw new Error("蓝牙命令无效");
   if (request.type === "write") {
     if (!Array.isArray(request.packets) || request.packets.length > 64) throw new Error("蓝牙数据无效");
@@ -242,11 +276,17 @@ async function runBleBridgeCommand(request) {
     };
   }
   await createBleBridgeWindow();
+  const automatic = request.type === "auto-connect";
+  if (automatic) beginAutomaticBluetoothSelection();
   const serialized = JSON.stringify(request).replaceAll("\u2028", "\\u2028").replaceAll("\u2029", "\\u2029");
-  return bleBridgeWindow.webContents.executeJavaScript(
-    `window.vicoBleBridge.execute(${serialized})`,
-    true
-  );
+  try {
+    return await bleBridgeWindow.webContents.executeJavaScript(
+      `window.vicoBleBridge.execute(${serialized})`,
+      true
+    );
+  } finally {
+    if (automatic) finishAutomaticBluetoothSelection();
+  }
 }
 
 function createWindow({ forceShow = false } = {}) {

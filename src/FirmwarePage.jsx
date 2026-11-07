@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, Check, CheckCircle2, ChevronDown, CircuitBoard, CloudDownload, Download,
+  AlertTriangle, Bluetooth, Check, CheckCircle2, ChevronDown, CircuitBoard, CloudDownload, Download,
   FolderOpen, HardDriveDownload, RefreshCw, ShieldCheck, Usb, XCircle, Zap
 } from "lucide-react";
 import SparkMD5 from "spark-md5";
@@ -85,7 +85,7 @@ const PHASE_COPY = {
   preparing:["正在准备固件", "读取并校验每个固件镜像"],
   connecting:["正在识别芯片", "正在验证所选设备是否为 ESP32-S3"],
   flashing:["正在写入并校验", "请勿拔出 USB 数据线或关闭软件"],
-  success:["升级完成", "键盘已重启，可重新连接 USB 配置通道"],
+  success:["升级完成", "键盘已重启，可重新连接 USB 或蓝牙"],
   error:["升级未完成", "设备没有被继续写入，请按提示重试"]
 };
 
@@ -359,6 +359,10 @@ export default function FirmwarePage({ onPrepareFlash }) {
             {busy ? <><RefreshCw className="spin"/>正在升级</> : phase === "success" ? <><RefreshCw/>再次烧录</> : <><Download/>{sourceMode === "server" ? "开始云端烧录" : writeMode === "quick" ? "开始快速升级" : "开始完整烧录"}</>}
           </button>
           <p className="flash-button-help">切换到蓝牙模式后点击，软件会自动让 ESP32-S3 进入下载模式。</p>
+          {phase === "success" && <div className="firmware-bluetooth-notice">
+            <Bluetooth/>
+            <div><b>升级后蓝牙没有反应？</b><span>Windows 可能仍保存着旧固件的蓝牙状态。请打开“设置 → 蓝牙和设备 → 设备”，删除或忽略 <strong>Vico Keyboard</strong>，然后重新搜索并配对。</span></div>
+          </div>}
           {logs.length > 0 && <details className="firmware-log" open={phase === "error"}>
             <summary>查看烧录日志</summary>
             <pre>{logs.join("\n")}</pre>
