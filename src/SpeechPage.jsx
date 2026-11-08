@@ -8,6 +8,7 @@ import { useRecorder } from "./useRecorder";
 const API_KEY_GUIDE_URL = "https://www.vicovico.xyz/manual.html#voice";
 
 const defaultOptions = {
+  enableStreaming:false,
   enableDdc:true,
   enablePunc:true,
   enableItn:true,
@@ -17,6 +18,7 @@ const defaultOptions = {
 };
 
 const optionDefinitions = {
+  enableStreaming:["完整录音流式识别", "录音完整接收并校验后，再通过豆包流式接口逐步返回文字"],
   enableDdc:["语义顺滑", "减少口语重复与停顿"],
   enablePunc:["自动标点", "补充逗号、句号和问号"],
   enableItn:["数字规整", "将口语数字转换为阿拉伯数字"],
@@ -96,6 +98,10 @@ export default function SpeechPage({ deviceEvent, usbStatus, bleStatus, onOpenCo
     });
     const removeProgress = window.vico?.speech?.onProgress?.((value) => {
       if (value?.message) setStatus(value.message);
+      if (value?.event === "partial-result" && typeof value.text === "string") {
+        setText(value.text);
+        setResult(null);
+      }
     });
     return () => {
       active = false;

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useRecorder } from "./useRecorder";
 
 const defaultOptions = {
+  enableStreaming:false,
   enableDdc:true,
   enablePunc:true,
   enableItn:true,

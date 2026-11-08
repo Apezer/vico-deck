@@ -32,8 +32,12 @@ let speechService;
 let speechBusy = false;
 let speechOverlayWindow;
 let speechOverlayHideTimer;
+let speechOverlayReady = false;
+let speechOverlayUpdateInFlight = false;
+let pendingSpeechOverlayUpdate = null;
 // 一次语音会话期间锁定显示器，避免状态切换或鼠标跨屏导致悬浮窗跳动。
 let speechOverlayDisplayId = null;
+let speechOverlayPositioned = false;
 let speechShortcutState = "idle";
 let speechTargetWindowHandle = "0";
 let speechShortcutRegistered = false;
@@ -483,6 +487,16 @@ app.whenReady().then(() => {
   });
   speechService.onProgress = (progress) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("speech:progress", progress);
+    if (speechShortcutState === "processing" && progress?.event === "partial-result") {
+      const partialText = String(progress.text || "").trim();
+      if (partialText) {
+        updateSpeechOverlay(
+          "processing",
+          "正在流式识别",
+          partialText.length > 34 ? `…${partialText.slice(-34)}` : partialText
+        );
+      }
+    }
   };
 
   createWindow();
@@ -652,7 +666,7 @@ function speechResult(operation) {
 
 /** 创建不会抢走聊天框焦点的桌面语音悬浮窗。 */
 function createSpeechOverlay() {
-  speechOverlayWindow = new BrowserWindow({
+  const overlay = new BrowserWindow({
     width: 300,
     height: 82,
     show: false,
@@ -666,14 +680,19 @@ function createSpeechOverlay() {
     hasShadow: false,
     webPreferences: { contextIsolation:true, nodeIntegration:false }
   });
-  speechOverlayWindow.setAlwaysOnTop(true, "status");
-  speechOverlayWindow.setIgnoreMouseEvents(true);
+  speechOverlayWindow = overlay;
+  speechOverlayReady = false;
+  speechOverlayUpdateInFlight = false;
+  pendingSpeechOverlayUpdate = null;
+  speechOverlayPositioned = false;
+  overlay.setAlwaysOnTop(true, "status");
+  overlay.setIgnoreMouseEvents(true);
   const html = `<!doctype html><html><head><meta charset="UTF-8"><style>
     *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:"Microsoft YaHei UI",sans-serif}
-    #card{height:70px;margin:6px;padding:10px 15px;display:flex;align-items:center;gap:13px;border:1px solid rgba(214,255,56,.42);border-radius:18px;background:rgba(12,16,21,.94);box-shadow:0 12px 36px rgba(0,0,0,.42);color:#edf2f6}
+    #card{height:70px;margin:6px;padding:10px 15px;display:flex;align-items:center;gap:13px;border:1px solid rgba(214,255,56,.42);border-radius:18px;background:rgba(12,16,21,.96);box-shadow:inset 0 1px 0 rgba(255,255,255,.035);color:#edf2f6}
     #icon{position:relative;width:43px;height:43px;flex:none;display:grid;place-items:center;border-radius:50%;background:rgba(214,255,56,.11);color:#d6ff38;box-shadow:0 0 18px rgba(214,255,56,.16)}
     #icon::before{content:"";position:absolute;inset:-6px;padding:2px;border-radius:50%;opacity:0;background:conic-gradient(from 0deg,transparent 0 18%,rgba(214,255,56,.18) 34%,#d6ff38 62%,#fff 72%,transparent 86%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;filter:drop-shadow(0 0 4px rgba(214,255,56,.85));pointer-events:none}
-    #icon svg{width:23px;height:23px}b,span{display:block}b{font-size:13px;margin-bottom:5px}span{font-size:10px;color:#929da8;white-space:nowrap}
+    #icon svg{width:23px;height:23px}b,span{display:block}b{font-size:13px;margin-bottom:5px}span{max-width:208px;overflow:hidden;text-overflow:ellipsis;font-size:10px;color:#929da8;white-space:nowrap}
     body[data-state="recording"] #icon{color:#ff7474;background:rgba(255,82,82,.13);animation:recording-glow 1.15s ease-in-out infinite}
     body[data-state="recording"] #card{border-color:rgba(255,102,102,.48)}
     body[data-state="processing"] #icon::before{opacity:1;animation:speech-ring 1.15s linear infinite}
@@ -682,39 +701,82 @@ function createSpeechOverlay() {
   </style></head><body data-state="recording"><div id="card"><div id="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg></div><div><b id="title">正在录音</b><span id="message">松开快捷键后停止并识别</span></div></div><script>
     window.setSpeechState=(state,title,message)=>{document.body.dataset.state=state;document.getElementById("title").textContent=title;document.getElementById("message").textContent=message};
   </script></body></html>`;
-  speechOverlayWindow.loadURL(`data:text/html;charset=UTF-8,${encodeURIComponent(html)}`);
+  overlay.on("closed", () => {
+    if (speechOverlayWindow !== overlay) return;
+    speechOverlayWindow = null;
+    speechOverlayReady = false;
+    speechOverlayUpdateInFlight = false;
+    pendingSpeechOverlayUpdate = null;
+    speechOverlayPositioned = false;
+  });
+  overlay.loadURL(`data:text/html;charset=UTF-8,${encodeURIComponent(html)}`)
+    .then(() => {
+      if (speechOverlayWindow !== overlay || overlay.isDestroyed()) return;
+      speechOverlayReady = true;
+      flushSpeechOverlayUpdate();
+    })
+    .catch(() => {});
+}
+
+/**
+ * 串行刷新悬浮窗，并把等待期间到达的多个流式结果合并为最新状态。
+ * Electron 在页面尚未加载完成时调用 executeJavaScript() 会为每次调用添加
+ * did-stop-loading 监听器，因此这里始终保证最多只有一项脚本正在等待执行。
+ */
+function flushSpeechOverlayUpdate() {
+  const overlay = speechOverlayWindow;
+  if (!overlay || overlay.isDestroyed() || !speechOverlayReady ||
+      speechOverlayUpdateInFlight || !pendingSpeechOverlayUpdate) return;
+
+  const update = pendingSpeechOverlayUpdate;
+  pendingSpeechOverlayUpdate = null;
+  speechOverlayUpdateInFlight = true;
+  const script = `window.setSpeechState(${JSON.stringify(update.state)},${JSON.stringify(update.title)},${JSON.stringify(update.message)})`;
+  overlay.webContents.executeJavaScript(script).catch(() => {}).finally(() => {
+    if (speechOverlayWindow !== overlay || overlay.isDestroyed()) return;
+    speechOverlayUpdateInFlight = false;
+    flushSpeechOverlayUpdate();
+  });
 }
 
 function placeAndShowSpeechOverlay() {
   if (!speechOverlayWindow || speechOverlayWindow.isDestroyed()) createSpeechOverlay();
-  const displays = screen.getAllDisplays();
-  let display = displays.find((item) => String(item.id) === String(speechOverlayDisplayId));
-  if (!display) {
-    display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    speechOverlayDisplayId = display.id;
+  // 一次会话只设置一次窗口坐标。流式结果更新期间重复 setBounds() 会在
+  // Windows 非整数 DPI 缩放下反复进行像素换算，表现为浮窗缓慢漂移或抖动。
+  if (!speechOverlayPositioned) {
+    const displays = screen.getAllDisplays();
+    let display = displays.find((item) => String(item.id) === String(speechOverlayDisplayId));
+    if (!display) {
+      display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+      speechOverlayDisplayId = display.id;
+    }
+    const [width, height] = speechOverlayWindow.getSize();
+    const x = Math.round(display.workArea.x + (display.workArea.width - width) / 2);
+    const y = Math.round(display.workArea.y + display.workArea.height - height - 26);
+    speechOverlayWindow.setBounds({ x, y, width, height }, false);
+    speechOverlayPositioned = true;
   }
-  const [width, height] = speechOverlayWindow.getSize();
-  const x = Math.round(display.workArea.x + (display.workArea.width - width) / 2);
-  const y = display.workArea.y + display.workArea.height - height - 26;
-  speechOverlayWindow.setBounds({ x, y, width, height }, false);
-  speechOverlayWindow.showInactive();
+  if (!speechOverlayWindow.isVisible()) speechOverlayWindow.showInactive();
 }
 
 /** 新语音会话只在开始时选择一次鼠标所在显示器。 */
 function beginSpeechOverlaySession(state, title, message) {
   speechOverlayDisplayId = null;
+  speechOverlayPositioned = false;
   updateSpeechOverlay(state, title, message);
 }
 
 function updateSpeechOverlay(state, title, message, hideDelay = 0) {
   clearTimeout(speechOverlayHideTimer);
   placeAndShowSpeechOverlay();
-  const script = `window.setSpeechState(${JSON.stringify(state)},${JSON.stringify(title)},${JSON.stringify(message)})`;
-  speechOverlayWindow.webContents.executeJavaScript(script).catch(() => {});
+  // 流式结果可能高频到达；尚未显示的旧结果没有排队价值，只保留最新一条。
+  pendingSpeechOverlayUpdate = { state, title, message };
+  flushSpeechOverlayUpdate();
   if (hideDelay > 0) {
     speechOverlayHideTimer = setTimeout(() => {
       speechOverlayWindow?.hide();
       speechOverlayDisplayId = null;
+      speechOverlayPositioned = false;
     }, hideDelay);
   }
 }
@@ -776,6 +838,7 @@ async function handleSpeechShortcut() {
 
 function validateSpeechOptions(value = {}) {
   return {
+    enableStreaming:Boolean(value.enableStreaming),
     enableDdc:value.enableDdc !== false,
     enablePunc:value.enablePunc !== false,
     enableItn:value.enableItn !== false,
@@ -871,6 +934,7 @@ ipcMain.handle("speech:shortcut:state", (_event, value = {}) => speechResult(asy
     if (keyboardSource && speechShortcutState === "idle") {
       speechTargetWindowHandle = await getForegroundWindowHandle().catch(() => "0");
       speechOverlayDisplayId = null;
+      speechOverlayPositioned = false;
     }
     speechShortcutState = "recording";
     updateSpeechOverlay(

@@ -360,6 +360,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .speech-instruction span { font-size:8px;color:#727c87; }
 .speech-recognize,.speech-import,.speech-cancel { min-height:36px;margin-top:12px;padding:0 16px;display:flex;align-items:center;gap:7px;justify-content:center; }
 .speech-import { margin-top:8px; }
+.speech-cancel { border:1px solid #633b3f;border-radius:6px;background:rgba(255,82,82,.065);color:#e98a8a;cursor:pointer;transition:border-color .16s ease,background .16s ease,color .16s ease; }
+.speech-cancel:hover:not(:disabled) { border-color:#8b4a50;background:rgba(255,82,82,.12);color:#ff9a9a; }
 .speech-error,.speech-notice { width:min(440px,100%);margin-top:12px;padding:10px;border-radius:6px;font-size:9px;line-height:1.5; }
 .speech-error { color:#ff9292;border:1px solid #60383b;background:rgba(255,80,80,.06); }
 .speech-notice { color:#cfe97a;border:1px solid #465326;background:rgba(214,255,56,.05);display:flex;align-items:center;justify-content:center;gap:6px; }

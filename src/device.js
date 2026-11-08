@@ -40,7 +40,7 @@ const RUNTIME_SETTINGS_CHANGED = 0x92;
 const BATTERY_STATUS_CHANGED = 0x93;
 const VOICE_PACKET = 0x94;
 
-function isVicoUsbDevice(device) {
+export function isVicoUsbDevice(device) {
   return device?.vendorId === VICO_USB_VENDOR_ID
     && device?.productId === VICO_USB_PRODUCT_ID
     && /^vico keyboard$/i.test(device?.productName || "")

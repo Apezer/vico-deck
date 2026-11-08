@@ -76,5 +76,34 @@ assert.equal(states.at(-1).state, "disabled");
 assert.equal(latestTimer(), undefined, "关闭自动连接后应该清理定时器");
 
 manager.stop();
+
+// BLE 断线后的第一轮扫描尚未完成时，如果 USB 随后完成枚举，必须记住这次
+// 热插拔事件，并在当前轮结束后立即重试，而不是等待完整的用户设置间隔。
+const availabilityTimers = [];
+let finishBleScan;
+const availabilityManager = new AutoConnectionManager({
+  restoreUsb:async () => ({ state:"disconnected" }),
+  restoreBle:() => new Promise((resolve) => { finishBleScan = resolve; }),
+  isConnected:() => false,
+  setTimer:(callback, delay) => {
+    const timer = { callback, delay, cancelled:false };
+    availabilityTimers.push(timer);
+    return timer;
+  },
+  clearTimer:(timer) => { timer.cancelled = true; }
+});
+availabilityManager.configure({ enabled:true, intervalSeconds:30, lastTransport:"ble" });
+const initialAvailabilityTimer = availabilityTimers.at(-1);
+initialAvailabilityTimer.cancelled = true;
+const activeAttempt = initialAvailabilityTimer.callback();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(typeof finishBleScan, "function", "第一轮应已进入蓝牙扫描");
+assert.equal(availabilityManager.notifyTransportAvailable(), true, "USB 枚举事件应被接受");
+finishBleScan({ state:"disconnected" });
+await activeAttempt;
+const immediateAvailabilityTimer = [...availabilityTimers].reverse().find((timer) => !timer.cancelled);
+assert.equal(immediateAvailabilityTimer?.delay, 0, "运行中发现 USB 后应立即开始下一轮连接");
+availabilityManager.stop();
+
 console.log("Auto connection passed: priority, interval, manual pause and retry");
 

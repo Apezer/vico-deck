@@ -5,7 +5,7 @@ import {
   Play, Plus, Power, RefreshCw, Rocket, Save, Settings, SlidersHorizontal,
   Sparkles, Sun, Trash2, Upload, Usb, Volume2, WifiOff, X
 } from "lucide-react";
-import { VicoBleDevice, VicoDevice } from "./device";
+import { isVicoUsbDevice, VicoBleDevice, VicoDevice } from "./device";
 import ClaudePage from "./ClaudePage";
 import SpeechPage from "./SpeechPage";
 import FirmwarePage from "./FirmwarePage";
@@ -1013,10 +1013,19 @@ export default function App() {
     });
     const removeSystemListener = window.vico?.onSystemStatus?.(setSystemStatus);
     const removeDeviceSelectionListener = window.vico?.onDeviceSelection?.(setDeviceSelection);
+    // BLE 切换到 USB 时，USB HID 往往晚于 BLE 断线事件才完成枚举。
+    // 监听真实的 HID connect 事件，设备一出现就立即重新运行 USB 优先连接流程。
+    const handleUsbAvailable = (event) => {
+      if (isVicoUsbDevice(event.device)) {
+        autoConnectionRef.current?.notifyTransportAvailable();
+      }
+    };
+    navigator.hid?.addEventListener("connect", handleUsbAvailable);
     return () => {
       removeClaudeListener?.();
       removeSystemListener?.();
       removeDeviceSelectionListener?.();
+      navigator.hid?.removeEventListener("connect", handleUsbAvailable);
       autoConnectionRef.current?.stop();
     };
   }, []);

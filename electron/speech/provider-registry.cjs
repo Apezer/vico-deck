@@ -19,7 +19,7 @@ function createProviderRegistry({ fetchImpl = globalThis.fetch } = {}) {
       resource:"volc.seedasr.auc",
       description:"适合国内网络环境的豆包大模型语音识别",
       credentialLabel:"豆包 API Key",
-      capabilities:["enableDdc", "enablePunc", "enableItn"],
+      capabilities:["enableStreaming", "enableDdc", "enablePunc", "enableItn"],
       defaultConfig:{},
       sanitizeConfig:() => ({}),
       isConfigured:() => true,

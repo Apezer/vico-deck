@@ -49,3 +49,26 @@ test("云端错误不会泄露 API Key", async (context) => {
     return true;
   });
 });
+
+test("打开流式选项后只把完整录音文件交给流式适配器", async () => {
+  const calls = [];
+  const streamingService = {
+    active:null,
+    onProgress:null,
+    async transcribe(audioPath, apiKey, options) {
+      calls.push({ audioPath, apiKey, options });
+      return { text:"流式结果", provider:"doubao", streaming:true };
+    },
+    cancel() { return false; }
+  };
+  const service = new DoubaoService({ streamingService });
+  const progress = () => {};
+  service.onProgress = progress;
+  const result = await service.transcribe("complete-recording.wav", "secret-key", { enableStreaming:true });
+
+  assert.equal(result.text, "流式结果");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].audioPath, "complete-recording.wav");
+  assert.equal(calls[0].options.enableStreaming, true);
+  assert.equal(streamingService.onProgress, progress);
+});

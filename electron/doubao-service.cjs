@@ -1,6 +1,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
+const { DoubaoFileStreamingService } = require("./speech/providers/doubao-file-streaming-service.cjs");
 
 const BASE_URL = "https://openspeech.bytedance.com/api/v3/auc/bigmodel";
 const RESOURCE_ID = "volc.seedasr.auc";
@@ -59,18 +60,37 @@ function normalizeResult(body, elapsed) {
 }
 
 class DoubaoService {
-  constructor({ fetchImpl = globalThis.fetch, pollInterval = 1000, timeout = 10 * 60 * 1000 } = {}) {
+  constructor({
+    fetchImpl = globalThis.fetch,
+    pollInterval = 1000,
+    timeout = 10 * 60 * 1000,
+    streamingService = new DoubaoFileStreamingService()
+  } = {}) {
     if (typeof fetchImpl !== "function") throw new Error("当前运行环境不支持网络请求");
     this.fetch = fetchImpl;
     this.pollInterval = pollInterval;
     this.timeout = timeout;
     this.controller = null;
-    this.onProgress = null;
+    this.streamingService = streamingService;
+    this.progressListener = null;
+  }
+
+  set onProgress(listener) {
+    this.progressListener = typeof listener === "function" ? listener : null;
+    this.streamingService.onProgress = this.progressListener;
+  }
+
+  get onProgress() {
+    return this.progressListener;
   }
 
   async transcribe(audioPath, apiKey, options = {}) {
-    if (this.controller) throw new Error("已有识别任务正在运行");
+    if (this.controller || this.streamingService.active) throw new Error("已有识别任务正在运行");
     if (typeof apiKey !== "string" || !apiKey.trim()) throw new Error("请先保存豆包 API Key");
+    // 流式模式同样只处理已经完整保存的录音文件，不参与键盘录音传输。
+    if (options.enableStreaming === true) {
+      return this.streamingService.transcribe(audioPath, apiKey, options);
+    }
     const format = FORMAT_BY_EXTENSION.get(path.extname(audioPath).toLowerCase());
     if (!format) throw new Error("豆包暂不支持该音频格式");
     const stat = await fs.stat(audioPath);
@@ -140,9 +160,11 @@ class DoubaoService {
   }
 
   cancel() {
-    if (!this.controller) return false;
-    this.controller.abort(new Error("任务已取消"));
-    return true;
+    if (this.controller) {
+      this.controller.abort(new Error("任务已取消"));
+      return true;
+    }
+    return this.streamingService.cancel();
   }
 }
 

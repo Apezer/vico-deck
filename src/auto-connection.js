@@ -43,6 +43,8 @@ export class AutoConnectionManager {
     this.lastTransport = null;
     this.manualPaused = false;
     this.running = false;
+    // 连接尝试进行期间如果发现了新的传输通道，当前轮结束后立即再试一次。
+    this.immediateRetryPending = false;
     this.timer = null;
     this.destroyed = false;
   }
@@ -55,6 +57,7 @@ export class AutoConnectionManager {
     this.lastTransport = lastTransport === "ble" ? "ble" : lastTransport === "usb" ? "usb" : null;
 
     if (!this.enabled) {
+      this.immediateRetryPending = false;
       this.clearScheduledAttempt();
       this.publish({ state:"disabled", nextAttemptAt:null });
       return;
@@ -83,22 +86,40 @@ export class AutoConnectionManager {
   notifyConnected(transport) {
     // 自动连接关闭或用户主动断开后，不允许迟到的连接事件覆盖当前状态。
     if (!this.enabled || this.manualPaused) return;
+    this.immediateRetryPending = false;
     this.clearScheduledAttempt();
     this.publish({ state:"connected", transport, nextAttemptAt:null });
   }
 
   notifyDisconnected() {
-    if (this.enabled && !this.manualPaused && !this.running) this.schedule(0);
+    if (!this.enabled || this.manualPaused) return;
+    // 自动扫描失败也会发布 disconnected；运行中的这类状态不能触发紧密重试。
+    // 真正新出现的 USB 通道由 notifyTransportAvailable() 单独处理。
+    if (this.running) return;
+    this.schedule(0, true);
+  }
+
+  /** USB 枚举或其他物理通道刚变为可用时，打断原来的定时等待。 */
+  notifyTransportAvailable() {
+    if (!this.enabled || this.manualPaused || this.isConnected()) return false;
+    if (this.running) {
+      this.immediateRetryPending = true;
+      return true;
+    }
+    this.schedule(0, true);
+    return true;
   }
 
   pauseForManualDisconnect() {
     this.manualPaused = true;
+    this.immediateRetryPending = false;
     this.clearScheduledAttempt();
     this.publish({ state:this.enabled ? "paused" : "disabled", nextAttemptAt:null });
   }
 
   beginManualConnect() {
     this.manualPaused = false;
+    this.immediateRetryPending = false;
     this.clearScheduledAttempt();
     this.publish({ state:this.enabled ? "connecting" : "disabled", manual:true, nextAttemptAt:null });
   }
@@ -118,12 +139,17 @@ export class AutoConnectionManager {
   retryNow() {
     if (!this.enabled) return false;
     this.manualPaused = false;
+    if (this.running) {
+      this.immediateRetryPending = true;
+      return true;
+    }
     this.schedule(0, true);
     return true;
   }
 
   stop() {
     this.destroyed = true;
+    this.immediateRetryPending = false;
     this.clearScheduledAttempt();
   }
 
@@ -190,8 +216,10 @@ export class AutoConnectionManager {
       return false;
     } finally {
       this.running = false;
+      const retryImmediately = this.immediateRetryPending;
+      this.immediateRetryPending = false;
       if (!this.destroyed && this.enabled && !this.manualPaused && !this.isConnected()) {
-        this.schedule(this.intervalSeconds * 1000);
+        this.schedule(retryImmediately ? 0 : this.intervalSeconds * 1000, retryImmediately);
       }
     }
   }
