@@ -2,22 +2,22 @@
   "schemaVersion": 1,
   "device": "Vico Keyboard",
   "board": "DFRobot FireBeetle 2 ESP32-S3",
-  "generatedAt": "2026-11-08T12:15:50+08:00",
+  "generatedAt": "2026-11-11T10:05:00+08:00",
   "releases": [
     {
-      "id": "vico-keyboard-standard-1.0.6",
-      "version": "1.0.6",
+      "id": "vico-keyboard-standard-1.0.7",
+      "version": "1.0.7",
       "category": "keyboard",
       "channel": "stable",
-      "title": "Vico Keyboard 1.0.6",
-      "publishedAt": "2026-11-08",
-      "description": "新增品牌页开屏动画，并提升 USB 与蓝牙语音录音缓冲可靠性。",
+      "title": "Vico Keyboard 1.0.7",
+      "publishedAt": "2026-11-11",
+      "description": "新增蓝牙 GATT 按键预设同步，并扩展快捷键与系统动作。",
       "notes": [
-        "品牌页每次进入时播放约 30 FPS 的平滑开屏动画，完成后保持原品牌界面",
-        "开屏动画实时绘制，不额外占用 SPIFFS 空间",
-        "USB 与蓝牙语音录音共用 512 KiB PSRAM 环形缓冲区",
-        "最长 15 秒录音可完整容纳，降低发送瞬时阻塞引发缓冲溢出的风险",
-        "保留原有按键、OLED、RGB、GIF 动画与休眠功能"
+        "五套按键预设现在可以通过蓝牙 GATT 同步，无需切换到 USB 模式",
+        "同步使用开始、逐键写入、CRC 校验和 NVS 提交事务，避免断线留下半套配置",
+        "蓝牙连接后自动读取活动预设与每套预设的 CRC，同步状态可在软件中查看",
+        "新增计算器、浏览器、邮件、网页搜索、返回和书签等 Consumer Control 动作",
+        "保留 USB 优先、语音录制独占以及键盘本地切换预设回传功能"
       ],
       "target": {
         "chip": "ESP32-S3",
@@ -28,31 +28,31 @@
       "images": [
         {
           "role": "bootloader",
-          "file": "1.0.6/bootloader.bin",
+          "file": "1.0.7/bootloader.bin",
           "address": 0,
           "size": 15104,
           "sha256": "e01a2300de23c8d601e9f2a37684b5dbc83ae37132d5a8833e23520afd895f92"
         },
         {
           "role": "partitions",
-          "file": "1.0.6/partitions.bin",
+          "file": "1.0.7/partitions.bin",
           "address": 32768,
           "size": 3072,
           "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1"
         },
         {
           "role": "boot_app0",
-          "file": "1.0.6/boot_app0.bin",
+          "file": "1.0.7/boot_app0.bin",
           "address": 57344,
           "size": 8192,
           "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0"
         },
         {
           "role": "application",
-          "file": "1.0.6/firmware.bin",
+          "file": "1.0.7/firmware.bin",
           "address": 65536,
-          "size": 711520,
-          "sha256": "d4580623a2a12cbf63044ac3011b64e8836eaef9c0a0c2fd3128b4206827a566"
+          "size": 712848,
+          "sha256": "5b0e0d9415e226f727425228d7246fd8ebcbdc55b092abfa2a962f44c6e87f77"
         }
       ]
     },

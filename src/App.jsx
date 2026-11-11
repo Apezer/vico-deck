@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, BatteryMedium, Bluetooth, ChevronDown, CircleHelp, Command, Cpu, Download,
-  Eraser, Gauge, Keyboard, Layers3, Mic, Monitor, Moon, Palette, Pencil,
+  AlertTriangle, BatteryMedium, Bluetooth, Calculator, ChevronDown, CircleHelp, Clipboard, Command, Download,
+  Eraser, FolderOpen, Gauge, Globe2, Keyboard, Layers3, Mail, Mic, Monitor, Moon, Palette, Pencil,
   Play, Plus, Power, RefreshCw, Rocket, Save, Settings, SlidersHorizontal,
   Sparkles, Sun, Trash2, Upload, Usb, Volume2, WifiOff, X
 } from "lucide-react";
@@ -26,7 +26,8 @@ import {
 import { astronautPageFrames } from "./astronaut-animation";
 import { encodeVani } from "./animation-format";
 import { convertGifFile } from "./gif-converter";
-import { profileCrc } from "./profile-protocol";
+import { compileMapping, profileCrc } from "./profile-protocol";
+import { shortcutDisplayLabel, shortcutFromKeyboardEvent } from "./key-shortcut";
 import { buildPersistentRuntimeBitmapPackets, buildRgbSettingsPacket, buildRuntimeBitmapPackets, buildRuntimeSettingsPacket, buildRuntimeStatusPackets } from "./runtime-protocol";
 import defaultProfiles from "../shared/default-profiles.json";
 import bongoCatGifUrl from "./assets/gif-examples/bongo-cat.gif?url";
@@ -51,22 +52,33 @@ const actionGroups = [
     ["keyboard", "ARROW_LEFT", "左方向键"], ["keyboard", "ARROW_DOWN", "下方向键"],
     ["keyboard", "ARROW_RIGHT", "右方向键"], ["keyboard", "ARROW_UP", "上方向键"],
     ["keyboard", "ENTER", "Enter"], ["keyboard", "BACKSPACE", "Backspace"],
-    ["keyboard", "ESC", "Esc"], ["keyboard", "TAB", "Tab"],
-    ["keyboard", "DELETE", "Delete"],
+    ["keyboard", "ESC", "Esc"], ["keyboard", "TAB", "Tab"], ["keyboard", "SPACE", "空格"],
+    ["keyboard", "DELETE", "Delete"], ["keyboard", "HOME", "Home"], ["keyboard", "END", "End"],
+    ["keyboard", "PAGE_UP", "Page Up"], ["keyboard", "PAGE_DOWN", "Page Down"],
     ["shortcut", "Ctrl+Win", "Ctrl + Win"], ["layer", "FN", "Fn"]
   ]},
-  { label: "常用", options: [
-    ["shortcut", "Ctrl+C", "复制"], ["shortcut", "Ctrl+V", "粘贴"],
-    ["shortcut", "Ctrl+Z", "撤销"], ["shortcut", "Ctrl+Shift+Z", "重做"]
+  { label: "编辑与办公", options: [
+    ["shortcut", "Ctrl+C", "复制"], ["shortcut", "Ctrl+V", "粘贴"], ["shortcut", "Ctrl+X", "剪切"],
+    ["shortcut", "Ctrl+Z", "撤销"], ["shortcut", "Ctrl+Shift+Z", "重做"],
+    ["shortcut", "Ctrl+S", "保存"], ["shortcut", "Ctrl+F", "查找"], ["shortcut", "Ctrl+A", "全选"]
   ]},
   { label: "媒体", options: [
     ["media", "PREVIOUS_TRACK", "上一曲"], ["media", "PLAY_PAUSE", "播放 / 暂停"],
     ["media", "NEXT_TRACK", "下一曲"], ["media", "STOP", "停止"], ["media", "VOLUME_UP", "音量 +"],
     ["media", "VOLUME_DOWN", "音量 -"], ["media", "MUTE", "静音"]
   ]},
-  { label: "系统", options: [
+  { label: "应用与网页", options: [
+    ["media", "CALCULATOR", "计算器"], ["system", "FILE_EXPLORER", "文件资源管理器"],
+    ["media", "LOCAL_BROWSER", "此电脑"], ["media", "EMAIL_READER", "默认邮件"],
+    ["media", "WWW_HOME", "默认浏览器"], ["media", "WWW_SEARCH", "网页搜索"],
+    ["media", "WWW_BACK", "网页后退"], ["media", "WWW_BOOKMARKS", "浏览器收藏夹"]
+  ]},
+  { label: "Windows 系统", options: [
     ["system", "LOCK_SCREEN", "锁定屏幕"], ["system", "SHOW_DESKTOP", "显示桌面"],
-    ["system", "SCREENSHOT", "截图"], ["system", "DO_NOTHING", "无操作"]
+    ["system", "SCREENSHOT", "截图"], ["system", "WINDOWS_SETTINGS", "Windows 设置"],
+    ["system", "TASK_MANAGER", "任务管理器"], ["system", "RUN_DIALOG", "运行"],
+    ["system", "CLIPBOARD_HISTORY", "剪贴板历史"], ["system", "WINDOWS_SEARCH", "系统搜索"],
+    ["system", "EMOJI_PANEL", "表情面板"], ["system", "DO_NOTHING", "无操作"]
   ]}
 ];
 
@@ -151,9 +163,35 @@ function Brand() {
   return <div className="brand"><div className="brand-mark"><span>V</span></div><div><b>VICO</b><small>DECK</small></div></div>;
 }
 
+/** Claude Code 官方像素机器人标志；使用 SVG 保证侧边栏小尺寸下仍然清晰。 */
+function ClaudeCodeIcon({ size = 18 }) {
+  return <svg
+    className="claude-code-icon"
+    width={size + 4}
+    height={size}
+    viewBox="3 0 26 16"
+    fill="currentColor"
+    preserveAspectRatio="none"
+    shapeRendering="crispEdges"
+    aria-hidden="true"
+  >
+    <rect x="6" y="1" width="20" height="3"/>
+    <rect x="6" y="4" width="3" height="3"/>
+    <rect x="11" y="4" width="10" height="3"/>
+    <rect x="23" y="4" width="3" height="3"/>
+    <rect x="3" y="7" width="26" height="2"/>
+    <rect x="4" y="9" width="24" height="1"/>
+    <rect x="6" y="10" width="20" height="2"/>
+    <rect x="8" y="12" width="1" height="3"/>
+    <rect x="11" y="12" width="1" height="3"/>
+    <rect x="20" y="12" width="1" height="3"/>
+    <rect x="23" y="12" width="1" height="3"/>
+  </svg>;
+}
+
 function Sidebar({ page, setPage }) {
   const items = [
-    ["keys", Keyboard, "按键配置"], ["oled", Monitor, "OLED 显示"], ["rgb", Palette, "RGB 灯光"], ["profiles", Layers3, "配置文件"], ["firmware", Download, "固件升级"], ["claude", Cpu, "Claude Code"], ["speech", Mic, "语音识别"], ["settings", Settings, "设置"]
+    ["keys", Keyboard, "按键配置"], ["oled", Monitor, "OLED 显示"], ["rgb", Palette, "RGB 灯光"], ["profiles", Layers3, "配置文件"], ["firmware", Download, "固件升级"], ["claude", ClaudeCodeIcon, "Claude Code"], ["speech", Mic, "语音识别"], ["settings", Settings, "设置"]
   ];
   const openHelp = () => {
     if (window.vico?.openExternal) {
@@ -201,7 +239,7 @@ function Header({ usbStatus, bleStatus, bleConnecting, syncing, sync, onOpenConn
         </span>
         <ChevronDown size={14}/>
       </button>
-      {usbConnected && <button className="connect-btn" onClick={sync} disabled={syncing || connecting}>
+      {connected && <button className="connect-btn" onClick={sync} disabled={syncing || connecting}>
         {syncing ? <RefreshCw className="spin" size={16}/> : <Save size={16}/>}
         {syncing ? "正在同步" : "同步到设备"}
       </button>
@@ -286,22 +324,88 @@ function DeviceHero({ connected, mode, batteryPercent, connecting, onOpenConnect
   </section>;
 }
 
+function KeyActionIcon({ type, value }) {
+  if (value === "CALCULATOR") return <Calculator/>;
+  if (value === "FILE_EXPLORER" || value === "LOCAL_BROWSER") return <FolderOpen/>;
+  if (value === "EMAIL_READER") return <Mail/>;
+  if (String(value).startsWith("WWW_")) return <Globe2/>;
+  if (value === "CLIPBOARD_HISTORY") return <Clipboard/>;
+  if (type === "media") return <Volume2/>;
+  if (type === "system") return <Power/>;
+  return <Command/>;
+}
+
 function KeyEditor({ mapping, onClose, onChange }) {
-  const [custom, setCustom] = useState(mapping.value);
+  const [custom, setCustom] = useState(mapping.type === "shortcut" ? mapping.value : "");
+  const [capturing, setCapturing] = useState(false);
+  const [shortcutMessage, setShortcutMessage] = useState("");
+  const captureButton = useRef(null);
+
+  useEffect(() => {
+    if (capturing) captureButton.current?.focus();
+  }, [capturing]);
+
+  const applyShortcut = (shortcut) => {
+    try {
+      const next = { ...mapping, type:"shortcut", value:shortcut, label:shortcutDisplayLabel(shortcut) };
+      compileMapping(next);
+      setCustom(shortcut);
+      setShortcutMessage("快捷键已记录，可同步到键盘");
+      onChange(next);
+    } catch (error) {
+      setShortcutMessage(error.message || "快捷键格式无效");
+    }
+  };
+
+  const captureShortcut = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.code === "Escape" && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
+      setCapturing(false);
+      setShortcutMessage("已取消录制");
+      return;
+    }
+    const shortcut = shortcutFromKeyboardEvent(event);
+    if (!shortcut) {
+      setShortcutMessage("请在修饰键后继续按一个普通按键");
+      return;
+    }
+    setCapturing(false);
+    applyShortcut(shortcut);
+  };
+
   return <div className="drawer-backdrop" onMouseDown={onClose}>
     <aside className="drawer" onMouseDown={(e) => e.stopPropagation()}>
       <div className="drawer-head"><div><span>KEY {mapping.key}</span><h2>设置按键功能</h2></div><button className="ghost square" onClick={onClose}><X size={20}/></button></div>
       {actionGroups.map((group) => <section className="action-section" key={group.label}>
         <h3>{group.label}</h3>
         <div className="action-grid">{group.options.map(([type, value, label]) =>
-          <button key={value} className={mapping.value === value ? "selected" : ""} onClick={() => onChange({ ...mapping, type, value, label })}>
-            <span>{type === "media" ? <Volume2/> : type === "system" ? <Power/> : <Command/>}</span><b>{label}</b><small>{value}</small>
+          <button key={value} className={mapping.value === value ? "selected" : ""} onClick={() => {
+            setCapturing(false);
+            setShortcutMessage("");
+            onChange({ ...mapping, type, value, label });
+          }}>
+            <span><KeyActionIcon type={type} value={value}/></span><b>{label}</b><small>{value}</small>
           </button>)}
         </div>
       </section>)}
-      <section className="action-section">
-        <h3>自定义快捷键</h3>
-        <div className="shortcut-input"><Command size={16}/><input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="例如 Ctrl+Shift+P"/><button onClick={() => onChange({ ...mapping, type: "shortcut", value: custom, label: custom })}>应用</button></div>
+      <section className="action-section shortcut-recorder-section">
+        <h3>录制任意快捷键</h3>
+        <button
+          ref={captureButton}
+          type="button"
+          className={`key-shortcut-recorder ${capturing ? "capturing" : ""}`}
+          onClick={() => {
+            setCapturing(true);
+            setShortcutMessage("请直接按下组合键；Esc 取消");
+          }}
+          onKeyDown={capturing ? captureShortcut : undefined}
+        >
+          <Command size={18}/>
+          <span><b>{capturing ? "正在等待按键…" : shortcutDisplayLabel(custom) || "点击开始录制"}</b><small>{capturing ? "支持 Ctrl、Shift、Alt、Win 与一个普通按键" : "点击后直接按下真实组合键"}</small></span>
+        </button>
+        <div className="shortcut-input"><Command size={16}/><input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="也可以手动输入，例如 Ctrl+Shift+P"/><button onClick={() => applyShortcut(custom)}>应用</button></div>
+        {shortcutMessage && <p className={`shortcut-recorder-message ${/无效|不支持|只能|不能为空/.test(shortcutMessage) ? "error" : ""}`}>{shortcutMessage}</p>}
       </section>
     </aside>
   </div>;
@@ -727,7 +831,7 @@ function ProfilesPage({ config, status, syncing, onSelectProfile, onSyncCurrent,
     }
   };
   return <section className="page-pad">
-    <div className="page-heading"><div className="icon-box"><Layers3/></div><div><span>PROFILES</span><h1>五套预设</h1><p>在软件中编辑，随后同步到键盘；按住 Fn + KEY1～KEY5 可离线切换。</p></div><div className="profile-actions push"><button className="secondary" disabled={!connected || syncing} onClick={onSyncCurrent}>同步当前</button><button className="primary" disabled={!connected || syncing} onClick={onSyncAll}>{syncing ? "同步中…" : "同步全部"}</button></div></div>
+    <div className="page-heading"><div className="icon-box"><Layers3/></div><div><span>PROFILES</span><h1>五套预设</h1><p>通过 USB 或蓝牙 GATT 同步到键盘；按住 Fn + KEY1～KEY5 可离线切换。</p></div><div className="profile-actions push"><button className="secondary" disabled={!connected || syncing} onClick={onSyncCurrent}>同步当前</button><button className="primary" disabled={!connected || syncing} onClick={onSyncAll}>{syncing ? "同步中…" : "同步全部"}</button></div></div>
     <div className="profile-list">{config.profiles.map((p, i) => {
       const syncState = getSyncState(p);
       const stateLabel = status.activeProfile === p.slot ? `键盘当前 · ${syncState}` : syncState;
@@ -1095,25 +1199,30 @@ export default function App() {
     return () => clearTimeout(saveTimer.current);
   }, [config]);
 
+  const profileDeviceStatus = status.state === "connected"
+    ? status
+    : bleStatus.state === "connected" ? bleStatus : { state:"disconnected" };
+
   useEffect(() => {
-    if (status.state !== "connected" || !Number.isInteger(status.activeProfile)) {
+    if (profileDeviceStatus.state !== "connected" ||
+        !Number.isInteger(profileDeviceStatus.activeProfile)) {
       lastDeviceProfile.current = null;
       return;
     }
-    if (lastDeviceProfile.current === status.activeProfile) return;
-    lastDeviceProfile.current = status.activeProfile;
+    if (lastDeviceProfile.current === profileDeviceStatus.activeProfile) return;
+    lastDeviceProfile.current = profileDeviceStatus.activeProfile;
 
     // 让所有页面跟随键盘端发起的预设切换（设置菜单或 Fn + KEY1～KEY5）。
     // 重新连接后也会立即对齐；当设备活动预设没有真正变化时，
     // 该引用可防止软件中的本地编辑选择被覆盖。
     setConfig((current) => {
       if (!current) return current;
-      const target = current.profiles.find((item) => item.slot === status.activeProfile);
+      const target = current.profiles.find((item) => item.slot === profileDeviceStatus.activeProfile);
       return target && target.id !== current.activeProfile
         ? { ...current, activeProfile: target.id }
         : current;
     });
-  }, [status.state, status.activeProfile]);
+  }, [profileDeviceStatus.state, profileDeviceStatus.activeProfile]);
 
   const profile = useMemo(() => config?.profiles.find((p) => p.id === config.activeProfile) || config?.profiles[0], [config]);
   if (!config || !profile) return <><GlobalSpeechController/><div className="loading"><div className="brand-mark"><span>V</span></div><p>正在准备你的工作台…</p></div></>;
@@ -1126,18 +1235,21 @@ export default function App() {
     const target = config.profiles.find((item) => item.id === profileId);
     if (!target) return;
 
-    // 立即选择以保证编辑操作流畅；USB 配置通道连接时，
+    // 立即选择以保证编辑操作流畅；USB 或蓝牙配置通道连接时，
     // 同时激活设备上的相同槽位。该命令不会覆盖预设的按键绑定。
     setConfig((current) => current
       ? { ...current, activeProfile: target.id }
       : current);
-    if (status.state !== "connected") return;
+    const transport = status.state === "connected"
+      ? deviceRef.current
+      : bleStatus.state === "connected" ? bleDeviceRef.current : null;
+    if (!transport) return;
 
     try {
-      await deviceRef.current.activateProfile(target.slot);
+      await transport.activateProfile(target.slot);
     } catch (error) {
       // 激活失败时恢复设备确认的槽位，避免两端静默显示不同的活动预设。
-      const actualSlot = deviceRef.current?.connectedStatus?.activeProfile;
+      const actualSlot = transport.connectedStatus?.activeProfile;
       setConfig((current) => {
         if (!current || !Number.isInteger(actualSlot)) return current;
         const actual = current.profiles.find((item) => item.slot === actualSlot);
@@ -1173,15 +1285,20 @@ export default function App() {
   };
   const sync = async () => {
     setSyncing(true);
-    try { await deviceRef.current.sync(profile); setToast("配置已同步到键盘"); }
+    try {
+      const transport = status.state === "connected" ? deviceRef.current : bleDeviceRef.current;
+      await transport.sync(profile);
+      setToast(`配置已通过${status.state === "connected" ? " USB" : "蓝牙"}同步到键盘`);
+    }
     catch (error) { setToast(error.message); }
     finally { setSyncing(false); }
   };
   const syncAll = async () => {
     setSyncing(true);
     try {
-      await deviceRef.current.syncAll(config.profiles, config.activeProfile);
-      setToast("五套预设已全部同步到键盘");
+      const transport = status.state === "connected" ? deviceRef.current : bleDeviceRef.current;
+      await transport.syncAll(config.profiles, config.activeProfile);
+      setToast(`五套预设已通过${status.state === "connected" ? " USB" : "蓝牙"}同步到键盘`);
     } catch (error) { setToast(error.message); }
     finally { setSyncing(false); }
   };
@@ -1330,7 +1447,7 @@ export default function App() {
           bleStatus={bleStatus}
           onOpenConnection={() => setConnectionCenterOpen(true)}
         />}
-        {page === "profiles" && <ProfilesPage config={config} status={status} syncing={syncing} onSelectProfile={selectProfile} onSyncCurrent={sync} onSyncAll={syncAll}/>}
+        {page === "profiles" && <ProfilesPage config={config} status={profileDeviceStatus} syncing={syncing} onSelectProfile={selectProfile} onSyncCurrent={sync} onSyncAll={syncAll}/>}
         {page === "firmware" && <FirmwarePage onPrepareFlash={prepareFirmwareFlash}/>}
         {page === "claude" && <ClaudePage claudeStatus={claudeStatus} usbStatus={status} bleStatus={bleStatus} hooksState={hooksState} activity={activity} installing={hooksInstalling} onOpenConnection={() => setConnectionCenterOpen(true)} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
         {page === "speech" && <SpeechPage deviceEvent={voiceDeviceEvent} usbStatus={status} bleStatus={bleStatus} onOpenConnection={() => setConnectionCenterOpen(true)}/>}

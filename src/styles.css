@@ -29,6 +29,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .sidebar nav button:hover { color:#d9dde4; background:#15191f; }
 .sidebar nav button.active { color:#f2f4f7; background:#1b2027; box-shadow: inset 3px 0 var(--accent); }
 .sidebar nav button.active svg { color:var(--accent); }
+.sidebar nav button .claude-code-icon { flex:0 0 auto;margin-left:-2px;margin-right:-2px; }
 .sidebar-help { width:100%; border:1px solid #242932; background:#12161b; border-radius:9px; padding:12px; display:flex; align-items:center; gap:9px; color:#777f8b; text-align:left; cursor:pointer; font:inherit; transition:border-color .18s ease,background .18s ease,color .18s ease; }
 .sidebar-help:hover { border-color:#3a4655; background:#171c22; color:#98a2af; }
 .sidebar-help:focus-visible { outline:2px solid #9bd400; outline-offset:2px; }
@@ -219,6 +220,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .shortcut-input { display:flex;align-items:center;gap:9px;border:1px solid #2a3038;background:#15191f;border-radius:7px;padding:5px 5px 5px 11px; }
 .shortcut-input input { flex:1;background:transparent;border:0;color:#eef1f5;font-size:11px;min-width:0; }
 .shortcut-input button { background:#2a3038;border:0;border-radius:5px;padding:7px 11px;font-size:9px;cursor:pointer; }
+.shortcut-recorder-section { padding-bottom:20px; }
+.key-shortcut-recorder { width:100%;min-height:66px;margin-bottom:9px;padding:12px 14px;border:1px solid #313943;border-radius:8px;background:#15191f;color:#dfe4ea;display:flex;align-items:center;gap:12px;text-align:left;cursor:pointer;outline:none; }
+.key-shortcut-recorder>svg { color:var(--accent);flex:0 0 auto; }
+.key-shortcut-recorder span,.key-shortcut-recorder b,.key-shortcut-recorder small { display:block; }
+.key-shortcut-recorder b { font-size:11px;margin-bottom:4px; }
+.key-shortcut-recorder small { color:#747e89;font-size:8px; }
+.key-shortcut-recorder:hover,.key-shortcut-recorder:focus { border-color:rgba(214,255,56,.6);box-shadow:0 0 0 2px rgba(214,255,56,.06); }
+.key-shortcut-recorder.capturing { border-color:#78a9ff;background:rgba(70,120,200,.08);animation:speech-capture-pulse 1.2s ease-in-out infinite; }
+.key-shortcut-recorder.capturing>svg,.key-shortcut-recorder.capturing b { color:#9fc0ff; }
+.shortcut-recorder-message { margin:8px 2px 0;color:#9fb96a;font-size:8px; }
+.shortcut-recorder-message.error { color:#ff8a8a; }
 .page-pad { padding:42px 5% 60px;max-width:1160px;margin:0 auto; }
 .page-heading { display:flex;gap:16px;align-items:center;margin-bottom:34px; }
 .page-heading .icon-box { width:48px;height:48px;border:1px solid #303741;border-radius:10px;background:#161a20;display:grid;place-items:center;color:var(--accent); }

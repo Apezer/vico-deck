@@ -9,8 +9,10 @@ import {
 import {
   PROFILE_COMMAND,
   PROFILE_PROTOCOL_VERSION,
+  buildBleProfilePacket,
   compileProfile,
   compiledProfileCrc,
+  parseBleProfilePacket,
   uint32ToBytes
 } from "./profile-protocol.js";
 import { buildVoiceSessionPacket, parseRuntimeSettingsPacket } from "./runtime-protocol.js";
@@ -545,6 +547,7 @@ export class VicoBleDevice {
     this.onRuntimeSettings = onRuntimeSettings;
     this.onVoice = onVoice;
     this.runtimeWriteQueue = Promise.resolve();
+    this.pendingProfileCommand = null;
     this.voiceExclusive = false;
     this.voiceReceiver = new VoiceTransferReceiver((event) => {
       this.voiceExclusive = event.type === "recording" || event.type === "transfer";
@@ -561,6 +564,7 @@ export class VicoBleDevice {
     this.connectedStatus = null;
     this.sessionActive = false;
     this.runtimeWriteQueue = Promise.resolve();
+    this.clearPendingProfileCommand(new Error("蓝牙 GATT 已断开"));
     this.voiceReceiver.reset();
     this.voiceExclusive = false;
   }
@@ -575,7 +579,11 @@ export class VicoBleDevice {
     this.connectedStatus = {
       state:"connected",
       name:status?.name || "Vico Keyboard",
-      batteryPercent:status?.batteryPercent ?? null
+      batteryPercent:status?.batteryPercent ?? null,
+      protocolVersion:0,
+      profileCount:0,
+      activeProfile:null,
+      profileCrcs:[]
     };
     this.sessionActive = true;
     this.onStatus(this.connectedStatus);
@@ -583,6 +591,17 @@ export class VicoBleDevice {
 
   handleIncomingBytes(bytes) {
     const value = Uint8Array.from(bytes || []);
+    let profilePacket = null;
+    try {
+      profilePacket = parseBleProfilePacket(value);
+    } catch (error) {
+      this.clearPendingProfileCommand(error);
+      return;
+    }
+    if (profilePacket) {
+      this.handleProfilePacket(profilePacket);
+      return;
+    }
     if (this.voiceReceiver.accept(value)) return;
     const runtimeSettings = parseRuntimeSettingsPacket(value);
     if (runtimeSettings) {
@@ -590,6 +609,111 @@ export class VicoBleDevice {
       return;
     }
     this.onAck?.(new TextDecoder().decode(value));
+  }
+
+  publishProfileStatus(patch) {
+    if (!this.connectedStatus) return;
+    this.connectedStatus = { ...this.connectedStatus, ...patch };
+    this.onStatus(this.connectedStatus);
+  }
+
+  clearPendingProfileCommand(error) {
+    if (!this.pendingProfileCommand) return;
+    const pending = this.pendingProfileCommand;
+    clearTimeout(pending.timer);
+    this.pendingProfileCommand = null;
+    pending.reject(error);
+  }
+
+  handleProfilePacket({ command, payload }) {
+    if (command === PROFILE_COMMAND.ACTIVE_CHANGED && payload.length >= 1) {
+      this.publishProfileStatus({ activeProfile:payload[0] });
+      return;
+    }
+
+    const pending = this.pendingProfileCommand;
+    if (!pending) return;
+
+    if (command === PROFILE_COMMAND.HELLO_ACK && pending.command === PROFILE_COMMAND.HELLO &&
+        payload.length >= 3) {
+      clearTimeout(pending.timer);
+      this.pendingProfileCommand = null;
+      pending.resolve({
+        protocolVersion:payload[0],
+        profileCount:payload[1],
+        activeProfile:payload[2]
+      });
+      return;
+    }
+
+    if (command === PROFILE_COMMAND.CRC && pending.command === PROFILE_COMMAND.GET_CRC &&
+        payload.length >= 5 && payload[0] === pending.slot) {
+      clearTimeout(pending.timer);
+      this.pendingProfileCommand = null;
+      pending.resolve({
+        slot:payload[0],
+        crc:(payload[1] | (payload[2] << 8) | (payload[3] << 16) | (payload[4] << 24)) >>> 0
+      });
+      return;
+    }
+
+    if (command === PROFILE_COMMAND.ACK && payload.length >= 4 && payload[0] === pending.command) {
+      clearTimeout(pending.timer);
+      this.pendingProfileCommand = null;
+      const result = payload[1];
+      if (result === 0) {
+        pending.resolve({ slot:payload[2], activeProfile:payload[3] });
+      } else {
+        pending.reject(new Error(PROFILE_ERRORS[result] || `键盘返回错误 ${result}`));
+      }
+    }
+  }
+
+  async requestProfileCommand(command, payload = [], timeoutMs = 2500) {
+    if (!this.sessionActive) throw new Error("请先连接键盘蓝牙 GATT");
+    if (this.voiceExclusive) throw new Error("键盘正在进行语音输入，请松开旋钮后再操作");
+    if (this.pendingProfileCommand) throw new Error("上一条蓝牙配置命令尚未完成");
+
+    const slot = command === PROFILE_COMMAND.GET_CRC ? payload[0] : null;
+    const response = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (this.pendingProfileCommand?.command !== command) return;
+        this.pendingProfileCommand = null;
+        reject(new Error("键盘未响应蓝牙配置命令，请检查 GATT 连接"));
+      }, timeoutMs);
+      this.pendingProfileCommand = { command, slot, resolve, reject, timer };
+    });
+
+    try {
+      await this.bridge().command("write", {
+        packets:[Array.from(buildBleProfilePacket(command, payload))]
+      });
+    } catch (error) {
+      if (this.pendingProfileCommand?.command === command) {
+        clearTimeout(this.pendingProfileCommand.timer);
+        this.pendingProfileCommand = null;
+      }
+      throw error;
+    }
+    return response;
+  }
+
+  async refreshProfileInfo() {
+    const hello = await this.requestProfileCommand(PROFILE_COMMAND.HELLO);
+    const profileCount = Math.min(5, hello.profileCount);
+    const profileCrcs = Array(profileCount).fill(0);
+    this.publishProfileStatus({ ...hello, profileCount, profileCrcs });
+    for (let slot = 0; slot < profileCount; slot += 1) {
+      const item = await this.requestProfileCommand(PROFILE_COMMAND.GET_CRC, [slot]);
+      profileCrcs[item.slot] = item.crc;
+    }
+    this.publishProfileStatus({ profileCrcs:[...profileCrcs] });
+    return this.connectedStatus;
+  }
+
+  async initializeSession() {
+    await this.refreshProfileInfo().catch(() => {});
+    await this.setVoiceSession(true).catch(() => {});
   }
 
   handleBridgeEvent(event) {
@@ -624,7 +748,7 @@ export class VicoBleDevice {
     const status = await this.bridge().command("restore", { fast:Boolean(fast) });
     if (status?.state === "connected") {
       this.applyConnectedStatus(status);
-      await this.setVoiceSession(true).catch(() => {});
+      await this.initializeSession();
     } else if (status?.state === "unsupported") {
       this.onStatus(status);
     }
@@ -636,7 +760,7 @@ export class VicoBleDevice {
     const status = await this.bridge().command("auto-connect");
     if (status?.state === "connected") {
       this.applyConnectedStatus(status);
-      await this.setVoiceSession(true).catch(() => {});
+      await this.initializeSession();
     } else if (status?.state === "unsupported") {
       this.onStatus(status);
     }
@@ -649,8 +773,61 @@ export class VicoBleDevice {
     this.onStatus({ state:"connecting", name:"Vico Keyboard" });
     const status = await this.bridge().command("connect");
     this.applyConnectedStatus(status);
-    await this.setVoiceSession(true).catch(() => {});
+    await this.initializeSession();
     return status;
+  }
+
+  async syncProfile(profile, activate = true) {
+    if ((this.connectedStatus?.protocolVersion || 0) < PROFILE_PROTOCOL_VERSION) {
+      throw new Error("键盘固件版本过旧，不支持蓝牙预设同步");
+    }
+    const slot = Number(profile.slot);
+    const profileCount = this.connectedStatus?.profileCount || 5;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= profileCount) {
+      throw new Error("预设槽位无效");
+    }
+
+    const compiled = compileProfile(profile);
+    const crc = compiledProfileCrc(compiled);
+    await this.requestProfileCommand(PROFILE_COMMAND.BEGIN, [PROFILE_PROTOCOL_VERSION, slot]);
+    for (const item of compiled) {
+      await this.requestProfileCommand(PROFILE_COMMAND.SET_KEY, [slot, item.key - 1, ...item.bytes]);
+    }
+    const ack = await this.requestProfileCommand(
+      PROFILE_COMMAND.COMMIT,
+      [slot, activate ? 1 : 0, ...uint32ToBytes(crc)],
+      4000
+    );
+    const profileCrcs = [...(this.connectedStatus.profileCrcs || Array(profileCount).fill(0))];
+    profileCrcs[slot] = crc;
+    this.publishProfileStatus({ profileCrcs, activeProfile:ack.activeProfile });
+    return { slot, crc, activeProfile:ack.activeProfile, profileCrcs };
+  }
+
+  async syncAll(profiles, activeProfileId) {
+    for (const profile of [...profiles].sort((a, b) => a.slot - b.slot)) {
+      await this.syncProfile(profile, false);
+    }
+    const active = profiles.find((profile) => profile.id === activeProfileId) || profiles[0];
+    const activeProfile = await this.activateProfile(active.slot);
+    return { activeProfile, profileCrcs:this.connectedStatus.profileCrcs };
+  }
+
+  async activateProfile(slot) {
+    if ((this.connectedStatus?.protocolVersion || 0) < PROFILE_PROTOCOL_VERSION) {
+      throw new Error("键盘固件版本过旧，不支持蓝牙预设切换");
+    }
+    const profileCount = this.connectedStatus?.profileCount || 5;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= profileCount) {
+      throw new Error("预设槽位无效");
+    }
+    const ack = await this.requestProfileCommand(PROFILE_COMMAND.SET_ACTIVE, [slot]);
+    this.publishProfileStatus({ activeProfile:ack.activeProfile });
+    return ack.activeProfile;
+  }
+
+  async sync(profile) {
+    return this.syncProfile(profile, true);
   }
 
   /** 新固件用该运行时包确认软件是否正在监听语音；旧固件会安全忽略。 */

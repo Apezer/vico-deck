@@ -1,15 +1,43 @@
 export const PROFILE_COUNT = 5;
 export const KEY_COUNT = 8;
 export const PROFILE_PROTOCOL_VERSION = 1;
+export const BLE_PROFILE_MAGIC = 0xb7;
 
 export const PROFILE_COMMAND = Object.freeze({
   BEGIN: 0x10,
   SET_KEY: 0x11,
   COMMIT: 0x12,
   SET_ACTIVE: 0x13,
+  GET_CRC: 0x14,
+  HELLO: 0x01,
+  HELLO_ACK: 0x81,
   ACK: 0x90,
-  ACTIVE_CHANGED: 0x91
+  ACTIVE_CHANGED: 0x91,
+  CRC: 0x94
 });
+
+/**
+ * 给蓝牙 GATT 配置消息增加独立包头，避免与 OLED 运行时包、语音包和
+ * Claude JSON 共用 characteristic 时产生误判。预设命令本身与 USB 保持一致。
+ */
+export function buildBleProfilePacket(command, payload = []) {
+  return Uint8Array.from([
+    BLE_PROFILE_MAGIC,
+    PROFILE_PROTOCOL_VERSION,
+    command & 0xff,
+    ...payload
+  ]);
+}
+
+/** 解析一份蓝牙预设消息；非预设通道的数据返回 null，交给其他协议处理。 */
+export function parseBleProfilePacket(bytes) {
+  const packet = Uint8Array.from(bytes || []);
+  if (packet.length < 3 || packet[0] !== BLE_PROFILE_MAGIC) return null;
+  if (packet[1] !== PROFILE_PROTOCOL_VERSION) {
+    throw new Error(`不支持的蓝牙预设协议版本：${packet[1]}`);
+  }
+  return { command:packet[2], payload:packet.slice(3) };
+}
 
 export const ACTION_TYPE = Object.freeze({
   NONE: 0,
@@ -26,12 +54,26 @@ export const MODIFIER = Object.freeze({
 });
 
 const SPECIAL_KEYS = Object.freeze({
+  SPACE: 0x20,
+  PLUS: 0x2b,
+  MINUS: 0x2d,
+  EQUAL: 0x3d,
+  COMMA: 0x2c,
+  PERIOD: 0x2e,
+  SLASH: 0x2f,
+  SEMICOLON: 0x3b,
+  APOSTROPHE: 0x27,
+  BACKTICK: 0x60,
+  BACKSLASH: 0x5c,
+  LEFT_BRACKET: 0x5b,
+  RIGHT_BRACKET: 0x5d,
   ENTER: 0xb0,
   ESC: 0xb1,
   ESCAPE: 0xb1,
   BACKSPACE: 0xb2,
   TAB: 0xb3,
   CAPS_LOCK: 0xc1,
+  PRINT_SCREEN: 0xce,
   DELETE: 0xd4,
   ARROW_RIGHT: 0xd7,
   RIGHT: 0xd7,
@@ -45,7 +87,23 @@ const SPECIAL_KEYS = Object.freeze({
   HOME: 0xd2,
   PAGE_UP: 0xd3,
   END: 0xd5,
-  PAGE_DOWN: 0xd6
+  PAGE_DOWN: 0xd6,
+  NUMPAD_ENTER: 0xe0,
+  NUMPAD_1: 0xe1,
+  NUMPAD_2: 0xe2,
+  NUMPAD_3: 0xe3,
+  NUMPAD_4: 0xe4,
+  NUMPAD_5: 0xe5,
+  NUMPAD_6: 0xe6,
+  NUMPAD_7: 0xe7,
+  NUMPAD_8: 0xe8,
+  NUMPAD_9: 0xe9,
+  NUMPAD_0: 0xea,
+  NUMPAD_PERIOD: 0xeb,
+  NUMPAD_DIVIDE: 0xdc,
+  NUMPAD_MULTIPLY: 0xdd,
+  NUMPAD_MINUS: 0xde,
+  NUMPAD_PLUS: 0xdf
 });
 
 const CONSUMER_ACTIONS = Object.freeze({
@@ -55,13 +113,29 @@ const CONSUMER_ACTIONS = Object.freeze({
   MUTE: 4,
   VOLUME_DOWN: 5,
   VOLUME_UP: 6,
-  STOP: 7
+  STOP: 7,
+  WWW_HOME: 8,
+  LOCAL_BROWSER: 9,
+  CALCULATOR: 10,
+  WWW_BOOKMARKS: 11,
+  WWW_SEARCH: 12,
+  WWW_STOP: 13,
+  WWW_BACK: 14,
+  MEDIA_SELECT: 15,
+  EMAIL_READER: 16
 });
 
 const SYSTEM_SHORTCUTS = Object.freeze({
   LOCK_SCREEN: "Win+L",
   SHOW_DESKTOP: "Win+D",
-  SCREENSHOT: "Win+Shift+S"
+  SCREENSHOT: "Win+Shift+S",
+  FILE_EXPLORER: "Win+E",
+  WINDOWS_SETTINGS: "Win+I",
+  TASK_MANAGER: "Ctrl+Shift+Esc",
+  RUN_DIALOG: "Win+R",
+  CLIPBOARD_HISTORY: "Win+V",
+  WINDOWS_SEARCH: "Win+S",
+  EMOJI_PANEL: "Win+PERIOD"
 });
 
 const MODIFIER_TOKENS = Object.freeze({
