@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   OLED_HEIGHT,
   OLED_WIDTH,
@@ -40,6 +40,7 @@ export default function OledPixelCanvas({ oled, tool, onBitmapChange, previewBit
   const drawingRef = useRef(false);
   const bytesRef = useRef(null);
   const lastPixelRef = useRef(null);
+  const [canvasUnavailable, setCanvasUnavailable] = useState(false);
   const bytes = useMemo(
     () => previewBitmap || (oled.mode === "custom" ? bitmapFromBase64(oled.bitmap) : renderOledTemplate(oled)),
     [oled, previewBitmap]
@@ -51,7 +52,7 @@ export default function OledPixelCanvas({ oled, tool, onBitmapChange, previewBit
     // 此时保留正在编辑的草稿，避免外部帧覆盖尚未提交的笔画。
     if (drawingRef.current) return;
     bytesRef.current = Uint8Array.from(bytes);
-    drawPixelFrame(canvasRef.current, bytesRef.current, oled.brightness);
+    setCanvasUnavailable(!drawPixelFrame(canvasRef.current, bytesRef.current, oled.brightness));
   }, [bytes, oled.brightness]);
 
   const locate = (event) => {
@@ -67,7 +68,9 @@ export default function OledPixelCanvas({ oled, tool, onBitmapChange, previewBit
     const next = locate(event);
     drawLine(bytesRef.current, lastPixelRef.current || next, next, tool !== "erase");
     lastPixelRef.current = next;
-    drawPixelFrame(canvasRef.current, bytesRef.current, oled.brightness);
+    if (!drawPixelFrame(canvasRef.current, bytesRef.current, oled.brightness)) {
+      setCanvasUnavailable(true);
+    }
   };
 
   const finish = (event, cancelled = false) => {
@@ -98,6 +101,9 @@ export default function OledPixelCanvas({ oled, tool, onBitmapChange, previewBit
         onPointerUp={finish}
         onPointerCancel={(event) => finish(event, true)}
       />
+      {canvasUnavailable && <div className="oled-canvas-error" role="alert">
+        OLED 预览初始化失败，请重新加载软件；若仍然出现，请尝试关闭显卡硬件加速。
+      </div>}
     </div>
   </div>;
 }

@@ -6,6 +6,7 @@ import {
   getBitmapPixel,
   renderOledTemplate
 } from "../src/oled-bitmap.js";
+import { drawPixelFrame } from "../src/oled-canvas-renderer.js";
 
 const frame = renderOledTemplate({ mode: "minimal" });
 assert.equal(frame.length, 1024);
@@ -26,5 +27,17 @@ assert.equal(getBitmapPixel(frame, 121, 47), true, "last key bottom-right");
 
 const restored = bitmapFromBase64(bitmapToBase64(frame));
 assert.deepEqual(restored, frame);
+
+assert.equal(
+  drawPixelFrame({ getContext:() => null }, frame),
+  false,
+  "Canvas 2D context 不可用时应安全返回，而不是让 React 页面崩溃"
+);
+const context = { clearRect() {}, fillRect() {}, fillStyle:"" };
+assert.equal(
+  drawPixelFrame({ width:512, height:256, getContext:() => context }, frame, undefined),
+  true,
+  "有效 Canvas 应完成绘制，并兼容缺失的亮度配置"
+);
 
 console.log("OLED firmware frame match passed: 1024 bytes");

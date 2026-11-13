@@ -315,6 +315,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .oled-pixel-screen { width:544px;max-width:100%;box-sizing:border-box;background:#020503;border:8px solid #272d34;border-radius:9px;box-shadow:0 24px 45px #040506,0 0 0 1px #3e454e;padding:8px;position:relative;z-index:1; }
 .oled-pixel-canvas { width:512px;max-width:100%;height:auto;aspect-ratio:2/1;display:block;background:#010302;image-rendering:pixelated;image-rendering:crisp-edges; }
 .oled-pixel-canvas.editable { cursor:crosshair;touch-action:none; }
+.oled-canvas-error { position:absolute;inset:0;display:grid;place-items:center;padding:28px;text-align:center;background:#090c0d;color:#ff8d8d;font-size:11px;line-height:1.7;border:1px solid rgba(255,94,94,.28); }
+
+.app-error-page { min-height:100vh;display:grid;place-items:center;padding:32px;background:radial-gradient(circle at 50% 20%,#171c22 0,#090b0f 52%);color:#e9edf1; }
+.app-error-card { width:min(520px,100%);padding:34px;border:1px solid #303740;border-radius:18px;background:#11161c;box-shadow:0 24px 70px rgba(0,0,0,.42);text-align:center; }
+.app-error-icon { width:58px;height:58px;margin:0 auto 18px;display:grid;place-items:center;border-radius:16px;color:#ff7272;background:rgba(255,82,82,.1);border:1px solid rgba(255,82,82,.2); }
+.app-error-card>span { color:#7d8792;font:700 10px "Segoe UI Variable",sans-serif;letter-spacing:.18em; }
+.app-error-card h1 { margin:8px 0 10px;font-size:24px; }
+.app-error-card p { margin:0;color:#9aa4ae;font-size:13px;line-height:1.7; }
+.app-error-card code { display:block;margin:18px 0;padding:12px;border-radius:9px;background:#090c10;color:#ff9d9d;font:11px/1.6 Consolas,monospace;overflow-wrap:anywhere; }
+.app-error-card button { margin:auto;display:flex;align-items:center;gap:8px;padding:10px 17px;border:0;border-radius:9px;background:var(--accent);color:#10130b;font-weight:700;cursor:pointer; }
+.app-error-card small { display:block;margin-top:15px;color:#68737e;font-size:10px; }
 .settings-card h2,.settings-block h2 { font:600 16px "Segoe UI Variable", sans-serif;margin:0 0 20px; }
 .settings-card>label,.range-label label { display:block;color:#7a828e;font-size:9px;margin:15px 0 6px; }
 .settings-card>input:not(.range) { width:100%;border:1px solid #2b313a;background:#0d1014;color:#e7eaf0;border-radius:7px;padding:9px 10px;font-size:11px; }

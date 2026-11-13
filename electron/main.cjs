@@ -47,6 +47,7 @@ let pendingAutomaticBluetoothSelection = null;
 let deviceSelectionSequence = 0;
 let bleBridgeWindow = null;
 let bleBridgeReady = null;
+let rendererFailureDialogOpen = false;
 let updateService;
 let firmwareService;
 const VICO_USB_VENDOR_ID = 0x3343;
@@ -320,6 +321,41 @@ function createWindow({ forceShow = false } = {}) {
   mainWindow.webContents.on("select-bluetooth-device", (event, deviceList, callback) => {
     event.preventDefault();
     requestDeviceSelection("bluetooth", deviceList, callback);
+  });
+
+  // 渲染进程崩溃时直接给出可恢复提示。这里只显示本次错误，不创建日志文件，
+  // details 仅用于帮助用户截图反馈崩溃原因和退出码。
+  mainWindow.webContents.on("render-process-gone", async (_event, details) => {
+    if (isQuitting || rendererFailureDialogOpen || details.reason === "clean-exit") return;
+    rendererFailureDialogOpen = true;
+    try {
+      const options = {
+        type:"error",
+        title:"VicoDeck 显示异常",
+        message:"VicoDeck 的界面进程意外停止",
+        detail:`原因：${details.reason || "unknown"}\n退出码：${details.exitCode ?? "unknown"}\n\n可以重新加载界面继续使用；本提示不会在电脑上生成日志文件。`,
+        buttons:["重新加载", "退出软件"],
+        defaultId:0,
+        cancelId:1,
+        noLink:true
+      };
+      const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+      const result = owner
+        ? await dialog.showMessageBox(owner, options)
+        : await dialog.showMessageBox(options);
+      if (result.response === 0) {
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+          mainWindow.webContents.reload();
+        } else {
+          createWindow({ forceShow:true });
+        }
+      } else {
+        isQuitting = true;
+        app.quit();
+      }
+    } finally {
+      rendererFailureDialogOpen = false;
+    }
   });
 
   if (app.isPackaged) {

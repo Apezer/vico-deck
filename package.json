@@ -1,6 +1,6 @@
 {
   "name": "vico-keyboard",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "description": "VicoDeck desktop companion for Vico Keyboard",
   "main": "electron/main.cjs",
   "author": "Vico",
