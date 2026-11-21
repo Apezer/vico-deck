@@ -30,6 +30,7 @@ assert.throws(
 
 const profiles = JSON.parse(fs.readFileSync(new URL("../shared/default-profiles.json", import.meta.url), "utf8"));
 assert.equal(profiles.length, 5);
+assert.equal(profiles[4].name, "系统模式");
 
 for (const [slot, profile] of profiles.entries()) {
   assert.equal(profile.slot, slot);

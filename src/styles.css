@@ -510,13 +510,18 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .toggle.on { background:var(--accent); }.toggle.on span{transform:translateX(17px);background:#111;}
 .toggle:disabled { opacity:.42;cursor:not-allowed; }
 .profile-list { display:grid;grid-template-columns:repeat(2,1fr);gap:12px; }
-.profile-card { border:1px solid #282e36;background:#11151a;border-radius:11px;padding:20px;display:flex;text-align:left;gap:16px;align-items:center;cursor:pointer; }
+.profile-card { position:relative;border:1px solid #282e36;background:#11151a;border-radius:11px;display:flex;text-align:left;align-items:center;overflow:hidden; }
 .profile-card:hover,.profile-card.active { border-color:#4e5864;background:#15191f; }
 .profile-card.active { box-shadow:inset 3px 0 var(--accent); }
+.profile-select-button { width:100%;min-width:0;border:0;background:transparent;padding:20px 54px 20px 20px;display:flex;text-align:left;gap:16px;align-items:center;cursor:pointer; }
+.profile-copy { min-width:0;flex:1; }
 .profile-number { font:700 22px "Segoe UI Variable", sans-serif;color:#363d46; }
 .profile-card span { color:var(--accent);font-size:8px;letter-spacing:.1em;text-transform:uppercase; }
 .profile-card h3 { margin:4px 0;font-size:14px; }.profile-card p{margin:0;color:#68717d;font-size:9px}
 .profile-chevron { margin-left:auto;transform:rotate(-90deg);color:#606974; }
+.profile-rename-button { position:absolute;right:15px;top:14px;width:29px;height:29px;border:1px solid transparent;border-radius:7px;background:transparent;color:#717b87;display:grid;place-items:center;cursor:pointer;transition:.18s; }
+.profile-rename-button:hover { color:var(--accent);border-color:#3a424c;background:#20262d; }
+.profile-name-input { width:min(220px,100%);height:28px;margin:3px 0 2px;padding:0 8px;border:1px solid var(--accent);border-radius:5px;outline:0;background:#0c1014;color:#eef2f5;font:600 13px "Segoe UI Variable",sans-serif;box-shadow:0 0 0 3px rgba(214,255,56,.08); }
 .profile-actions { display:flex;gap:8px; }
 .settings-page { max-width:900px; }
 .settings-block { margin-bottom:14px;padding:22px 26px; }

@@ -73,7 +73,7 @@ const DEFAULT_SPEECH_SHORTCUT = "CommandOrControl+Alt+I";
 if (!hasSingleInstanceLock) app.quit();
 
 const defaults = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   startAtLogin: false,
   minimizeToTray: true,
   closeToTray: true,
@@ -96,8 +96,21 @@ function configPath() {
 function readConfig() {
   try {
     const saved = JSON.parse(fs.readFileSync(configPath(), "utf8"));
-    if (saved.schemaVersion === 2 && saved.profiles?.length === 5) {
-      return { ...structuredClone(defaults), ...saved };
+    if (saved.schemaVersion >= 2 && saved.profiles?.length === 5) {
+      const profiles = structuredClone(saved.profiles);
+
+      // 早期五预设迁移会将 P5 标记为“旧配置”。该名称只是迁移提示，
+      // 不应永久显示为预设名称；保留用户原有按键内容，仅恢复默认名称。
+      if (profiles[4]?.name === "旧配置") {
+        profiles[4].name = defaultProfiles[4].name;
+      }
+
+      return {
+        ...structuredClone(defaults),
+        ...saved,
+        schemaVersion: defaults.schemaVersion,
+        profiles
+      };
     }
 
     // 安装新的五槽位固定模型时，将之前的活动布局保存在 P5。
@@ -107,7 +120,7 @@ function readConfig() {
     if (legacy?.mappings?.length === 8) {
       migrated.profiles[4] = {
         ...migrated.profiles[4],
-        name: "旧配置",
+        name: defaultProfiles[4].name,
         mappings: structuredClone(legacy.mappings),
         oled: { ...migrated.profiles[4].oled, ...legacy.oled }
       };

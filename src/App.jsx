@@ -37,7 +37,7 @@ import musicCatGifUrl from "./assets/gif-examples/music-cat.gif?url";
 const HELP_URL = "http://vico.zheng2005.xyz/manual.html";
 
 const fallbackConfig = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   startAtLogin: false, minimizeToTray: true, closeToTray: true,
   autoConnect: true, autoConnectIntervalSeconds: 30, lastTransport: null,
   speechShortcut: "CommandOrControl+Alt+I",
@@ -820,7 +820,10 @@ function RgbPage({ settings, updateSettings, usbStatus, bleStatus, onOpenConnect
   </section>;
 }
 
-function ProfilesPage({ config, status, syncing, onSelectProfile, onSyncCurrent, onSyncAll }) {
+function ProfilesPage({ config, status, syncing, onSelectProfile, onRenameProfile, onSyncCurrent, onSyncAll }) {
+  const [editingProfileId, setEditingProfileId] = useState(null);
+  const [editingName, setEditingName] = useState("");
+  const renameCancelled = useRef(false);
   const connected = status.state === "connected";
   const getSyncState = (profile) => {
     if (!connected || !status.profileCrcs?.length) return "未连接";
@@ -830,14 +833,68 @@ function ProfilesPage({ config, status, syncing, onSelectProfile, onSyncCurrent,
       return "配置有误";
     }
   };
+  const beginRename = (profile) => {
+    renameCancelled.current = false;
+    setEditingProfileId(profile.id);
+    setEditingName(profile.name || "");
+  };
+  const finishRename = (profile) => {
+    if (editingProfileId !== profile.id) return;
+    if (renameCancelled.current) {
+      renameCancelled.current = false;
+      return;
+    }
+    const name = editingName.trim().slice(0, 24);
+    if (name && name !== profile.name) onRenameProfile(profile.id, name);
+    setEditingProfileId(null);
+    setEditingName("");
+  };
+  const cancelRename = () => {
+    renameCancelled.current = true;
+    setEditingProfileId(null);
+    setEditingName("");
+  };
   return <section className="page-pad">
     <div className="page-heading"><div className="icon-box"><Layers3/></div><div><span>PROFILES</span><h1>五套预设</h1><p>离线切换：Fn + KEY1/2/3 对应 P1/P2/P3，Fn + KEY7/KEY6 对应 P4/P5。</p></div><div className="profile-actions push"><button className="secondary" disabled={!connected || syncing} onClick={onSyncCurrent}>同步当前</button><button className="primary" disabled={!connected || syncing} onClick={onSyncAll}>{syncing ? "同步中…" : "同步全部"}</button></div></div>
     <div className="profile-list">{config.profiles.map((p, i) => {
       const syncState = getSyncState(p);
       const stateLabel = status.activeProfile === p.slot ? `键盘当前 · ${syncState}` : syncState;
-      return <button key={p.id} className={`profile-card ${p.id === config.activeProfile ? "active" : ""}`} onClick={() => onSelectProfile(p.id)}>
-        <div className="profile-number">0{i+1}</div><div><span>{stateLabel}</span><h3>{p.name}</h3><p>8 个按键 · P{i + 1} · {p.id === config.activeProfile ? "正在编辑" : "点击编辑"}</p></div><ChevronDown className="profile-chevron"/>
-      </button>;
+      const editing = editingProfileId === p.id;
+      return <div key={p.id} className={`profile-card ${p.id === config.activeProfile ? "active" : ""}`}>
+        <div
+          className="profile-select-button"
+          role="button"
+          tabIndex={0}
+          onClick={() => onSelectProfile(p.id)}
+          onKeyDown={(event) => {
+            if (!editing && (event.key === "Enter" || event.key === " ")) onSelectProfile(p.id);
+          }}
+          aria-label={`编辑 P${i + 1} ${p.name}`}
+        >
+          <div className="profile-number">0{i+1}</div>
+          <div className="profile-copy"><span>{stateLabel}</span>
+            {editing
+              ? <input
+                  className="profile-name-input"
+                  value={editingName}
+                  maxLength={24}
+                  autoFocus
+                  aria-label={`修改 P${i + 1} 名称`}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => setEditingName(event.target.value)}
+                  onBlur={() => finishRename(p)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                    if (event.key === "Escape") { event.preventDefault(); cancelRename(); }
+                  }}
+                />
+              : <h3>{p.name}</h3>}
+            <p>8 个按键 · P{i + 1} · {p.id === config.activeProfile ? "正在编辑" : "点击编辑"}</p>
+          </div>
+          <ChevronDown className="profile-chevron"/>
+        </div>
+        {!editing && <button className="profile-rename-button" aria-label={`重命名 ${p.name}`} title="修改预设名称" onClick={() => beginRename(p)}><Pencil size={14}/></button>}
+      </div>;
     })}</div>
   </section>;
 }
@@ -1231,6 +1288,10 @@ export default function App() {
     ...current,
     profiles:current.profiles.map((item) => item.id === next.id ? next : item)
   }));
+  const renameProfile = (profileId, name) => setConfig((current) => ({
+    ...current,
+    profiles:current.profiles.map((item) => item.id === profileId ? { ...item, name } : item)
+  }));
   const selectProfile = async (profileId) => {
     const target = config.profiles.find((item) => item.id === profileId);
     if (!target) return;
@@ -1447,7 +1508,7 @@ export default function App() {
           bleStatus={bleStatus}
           onOpenConnection={() => setConnectionCenterOpen(true)}
         />}
-        {page === "profiles" && <ProfilesPage config={config} status={profileDeviceStatus} syncing={syncing} onSelectProfile={selectProfile} onSyncCurrent={sync} onSyncAll={syncAll}/>}
+        {page === "profiles" && <ProfilesPage config={config} status={profileDeviceStatus} syncing={syncing} onSelectProfile={selectProfile} onRenameProfile={renameProfile} onSyncCurrent={sync} onSyncAll={syncAll}/>}
         {page === "firmware" && <FirmwarePage onPrepareFlash={prepareFirmwareFlash}/>}
         {page === "claude" && <ClaudePage claudeStatus={claudeStatus} usbStatus={status} bleStatus={bleStatus} hooksState={hooksState} activity={activity} installing={hooksInstalling} onOpenConnection={() => setConnectionCenterOpen(true)} onInstallHooks={installHooks} onSendTest={sendTestStatus}/>}
         {page === "speech" && <SpeechPage deviceEvent={voiceDeviceEvent} usbStatus={status} bleStatus={bleStatus} onOpenConnection={() => setConnectionCenterOpen(true)}/>}
