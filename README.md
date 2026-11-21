@@ -50,7 +50,8 @@ VicoDeck 是 Vico 8 键可编程键盘的桌面配套软件。它把按键、OLE
 - RGB 灯光工作室：六种灯效、亮度、速度和总开关，通过 USB/BLE 实时同步
 - INMP441 按住说话：旋钮按下录音、松开后通过 USB/BLE 发送并调用当前选择的云端服务商识别
 - USB WebHID 与 BLE GATT 共用紧凑运行时状态协议
-- Fn + KEY1～KEY5 可在不运行软件时切换 P1～P5
+- Fn + KEY1/KEY2/KEY3 可切换 P1/P2/P3，Fn + KEY7/KEY6 可切换 P4/P5
+- Fn + KEY5 可切换到下一个 OLED 页面，KEY4 + KEY8 可进入设备设置菜单
 - 通过设备 CRC 自动判断每套预设是否已经同步
 - 配置自动保存
 - USB WebHID 逐命令确认和原子提交

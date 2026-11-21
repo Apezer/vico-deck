@@ -716,7 +716,7 @@ function OledPage({
         {selectedPage !== "animation" &&
           <div className="setting-row compact"><div><b>Coding 自动覆盖</b><span>{selectedPage === "custom" ? "自定义像素画显示期间保持关闭" : "Claude Code 工作、等待或出错时自动切换到 Coding"}</span></div><Toggle disabled={selectedPage === "custom"} value={runtime.autoClaude} onChange={(value) => updateRuntime({ ...runtime, autoClaude:value })}/></div>
         }
-        <div className="runtime-help">选择后会立即通过 USB 或蓝牙同步到键盘；键盘端也可使用 Fn + KEY6 / KEY7 切换。</div>
+        <div className="runtime-help">选择后会立即通过 USB 或蓝牙同步到键盘；键盘端可使用 Fn + KEY5 切换到下一个 OLED 页面。</div>
         {selectedPage !== "animation" && <>
           <div className="range-label"><label>屏幕亮度</label><b>{oled.brightness}%</b></div><input className="range" type="range" min="10" max="100" value={oled.brightness} onChange={(e) => set({ brightness:Number(e.target.value) })}/>
         </>}
@@ -831,7 +831,7 @@ function ProfilesPage({ config, status, syncing, onSelectProfile, onSyncCurrent,
     }
   };
   return <section className="page-pad">
-    <div className="page-heading"><div className="icon-box"><Layers3/></div><div><span>PROFILES</span><h1>五套预设</h1><p>通过 USB 或蓝牙 GATT 同步到键盘；按住 Fn + KEY1～KEY5 可离线切换。</p></div><div className="profile-actions push"><button className="secondary" disabled={!connected || syncing} onClick={onSyncCurrent}>同步当前</button><button className="primary" disabled={!connected || syncing} onClick={onSyncAll}>{syncing ? "同步中…" : "同步全部"}</button></div></div>
+    <div className="page-heading"><div className="icon-box"><Layers3/></div><div><span>PROFILES</span><h1>五套预设</h1><p>离线切换：Fn + KEY1/2/3 对应 P1/P2/P3，Fn + KEY7/KEY6 对应 P4/P5。</p></div><div className="profile-actions push"><button className="secondary" disabled={!connected || syncing} onClick={onSyncCurrent}>同步当前</button><button className="primary" disabled={!connected || syncing} onClick={onSyncAll}>{syncing ? "同步中…" : "同步全部"}</button></div></div>
     <div className="profile-list">{config.profiles.map((p, i) => {
       const syncState = getSyncState(p);
       const stateLabel = status.activeProfile === p.slot ? `键盘当前 · ${syncState}` : syncState;
@@ -1212,7 +1212,7 @@ export default function App() {
     if (lastDeviceProfile.current === profileDeviceStatus.activeProfile) return;
     lastDeviceProfile.current = profileDeviceStatus.activeProfile;
 
-    // 让所有页面跟随键盘端发起的预设切换（设置菜单或 Fn + KEY1～KEY5）。
+    // 让所有页面跟随键盘端发起的预设切换（设置菜单或 Fn 组合键）。
     // 重新连接后也会立即对齐；当设备活动预设没有真正变化时，
     // 该引用可防止软件中的本地编辑选择被覆盖。
     setConfig((current) => {
